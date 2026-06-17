@@ -155,6 +155,23 @@ class TTHttpClient:
         tensors = [_b64jpeg_to_tensor(b) for b in frames]
         return torch.stack(tensors, dim=0)
 
+    # -- video staged ops (wan22) ------------------------------------------
+
+    def denoise_video(self, **params) -> torch.Tensor:
+        """Call ``/video/denoise`` (wan22). Returns latents [B, z_dim, F, H, W].
+
+        Uses the long video timeout since denoising runs the full sampling loop.
+        """
+        body = {k: v for k, v in params.items() if v is not None}
+        data = self._post("/video/denoise", body, timeout=max(self.timeout, 3600.0))
+        return b64npy_to_tensor(data["latent"])
+
+    def vae_decode_video(self, latents: torch.Tensor) -> torch.Tensor:
+        """Call ``/video/vae_decode`` (wan22). Returns frames [T, H, W, C] in [0, 1]."""
+        body = {"latent": tensor_to_b64npy(latents)}
+        data = self._post("/video/vae_decode", body, timeout=max(self.timeout, 3600.0))
+        return b64npy_to_tensor(data["image"])
+
     # -- staged ops (Milestone 2) ------------------------------------------
 
     def denoise(self, **params) -> torch.Tensor:

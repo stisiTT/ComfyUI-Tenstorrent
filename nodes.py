@@ -78,8 +78,10 @@ class TT_CheckpointLoader:
     board (sdxl -> p150, wan22 -> p300x2), then connects over HTTP. The server
     owns the device and the denoise trace.
 
-    Switching the model restarts the server (multi-minute warmup). For wan22,
-    feed the MODEL output into TT_TextToVideo (CLIP/VAE outputs are unused).
+    Switching the model restarts the server (multi-minute warmup). MODEL/CLIP/VAE
+    drive the staged graph for both paths: sdxl -> CLIP Text Encode -> TT_KSampler
+    -> TT_VAEDecode; wan22 -> CLIP Text Encode -> TT_WanSampler -> TT_VAEDecode
+    (or the monolithic TT_TextToVideo).
     """
 
     @classmethod
@@ -88,7 +90,7 @@ class TT_CheckpointLoader:
             "required": {
                 "model_type": (["sdxl", "wan22"], {
                     "default": "sdxl",
-                    "tooltip": "Model to stand up. sdxl -> image graph; wan22 -> TT_TextToVideo"
+                    "tooltip": "Model to stand up. sdxl -> image graph; wan22 -> video graph (TT_WanSampler or TT_TextToVideo)"
                 }),
             },
             "optional": {
@@ -107,8 +109,8 @@ class TT_CheckpointLoader:
     RETURN_NAMES = ("model", "clip", "vae")
     OUTPUT_TOOLTIPS = (
         "Diffusion/video model handle (routes to the tt-metal server)",
-        "CLIP text encoder (sdxl image graph; unused for wan22)",
-        "VAE encoder/decoder (sdxl image graph; unused for wan22)",
+        "CLIP text encoder — feed into CLIP Text Encode (sdxl and wan22)",
+        "VAE decoder — feed into TT_VAEDecode (sdxl and wan22)",
     )
     FUNCTION = "load_checkpoint"
     CATEGORY = "Tenstorrent"
@@ -292,17 +294,19 @@ class TT_KSampler:
 
 class TT_VAEDecode:
     """
-    Decode latents to images via the tt-metal server (``/vae/decode``).
+    Decode latents to images/frames via the tt-metal server.
 
-    If the LATENT was produced by the full-pipeline fallback (carries
-    ``tt_already_decoded``), the image is passed through unchanged.
+    SDXL latents go to ``/vae/decode`` (image batch [B, H, W, C]); wan22 video
+    latents go to ``/video/vae_decode`` (frame batch [T, H, W, C]). If the LATENT
+    was produced by the full-pipeline fallback (carries ``tt_already_decoded``),
+    the image is passed through unchanged.
     """
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "samples": ("LATENT", {"tooltip": "Latents from TT_KSampler"}),
+                "samples": ("LATENT", {"tooltip": "Latents from TT_KSampler (sdxl) or TT_WanSampler (wan22)"}),
                 "vae": ("VAE", {"tooltip": "VAE from TT_CheckpointLoader"}),
             }
         }
@@ -325,14 +329,19 @@ class TT_VAEDecode:
 
         if not hasattr(vae, "client"):
             raise RuntimeError("TT_VAEDecode requires a Tenstorrent VAE from TT_CheckpointLoader.")
-        if getattr(vae, "model_type", None) != "sdxl":
+        model_type = getattr(vae, "model_type", None)
+        if model_type not in ("sdxl", "wan22"):
             raise RuntimeError(
-                f"TT_VAEDecode supports the SDXL image path only (got '{getattr(vae, 'model_type', None)}')."
+                f"TT_VAEDecode supports the SDXL image path and wan22 video path (got '{model_type}')."
             )
 
         latents = samples["samples"]
-        logger.info(f"TT_VAEDecode: decoding latents {tuple(latents.shape)} via /vae/decode")
-        images = vae.client.vae_decode(latents)  # [B, H, W, C] in [0, 1]
+        if model_type == "wan22":
+            logger.info(f"TT_VAEDecode: decoding wan22 latents {tuple(latents.shape)} via /video/vae_decode")
+            images = vae.client.vae_decode_video(latents)  # [T, H, W, C] in [0, 1]
+        else:
+            logger.info(f"TT_VAEDecode: decoding latents {tuple(latents.shape)} via /vae/decode")
+            images = vae.client.vae_decode(latents)  # [B, H, W, C] in [0, 1]
         images = images.clamp(0.0, 1.0)
         logger.info(f"TT_VAEDecode: received image {tuple(images.shape)}")
         return (images,)
@@ -375,13 +384,82 @@ class TT_VAEEncode:
         return ({"samples": latents},)
 
 
+class TT_WanSampler:
+    """
+    Staged wan22 sampler: run the denoise loop on the tt-metal server and return
+    video LATENT (``/video/denoise``).
+
+    This is the staged counterpart to the monolithic TT_TextToVideo: pair it with
+    CLIP Text Encode (positive/negative) and TT_VAEDecode to get the standard
+    Load -> Encode -> Sample -> Decode graph. Geometry (width/height/num_frames)
+    is fixed at server start, so it is not exposed here.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "model": ("MODEL", {"tooltip": "wan22 MODEL from TT_CheckpointLoader"}),
+                "positive": ("CONDITIONING", {"tooltip": "Positive conditioning (from CLIP Text Encode)"}),
+                "negative": ("CONDITIONING", {"tooltip": "Negative conditioning (from CLIP Text Encode)"}),
+                "num_inference_steps": ("INT", {"default": 30, "min": 1, "max": 200, "step": 1, "tooltip": "Denoising steps"}),
+                "guidance_scale": ("FLOAT", {"default": 4.0, "min": 1.0, "max": 20.0, "step": 0.1, "tooltip": "CFG for the high-noise expert (layout). Wan2.2 recommended ~4.0; must be > 1."}),
+                "guidance_scale_2": ("FLOAT", {"default": 3.0, "min": 1.0, "max": 20.0, "step": 0.1, "tooltip": "CFG for the low-noise expert (detail). Recommended ~3.0; must be > 1."}),
+                "flow_shift": ("FLOAT", {"default": 12.0, "min": 0.0, "max": 30.0, "step": 0.1, "tooltip": "Scheduler flow shift. ~12.0 for 480p, ~5.0 for 720p."}),
+                "boundary_ratio": ("FLOAT", {"default": 0.875, "min": 0.0, "max": 1.0, "step": 0.005, "tooltip": "Fraction of steps handled by the high-noise expert (default 0.875)."}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "tooltip": "Random seed"}),
+            }
+        }
+
+    RETURN_TYPES = ("LATENT",)
+    RETURN_NAMES = ("samples",)
+    OUTPUT_TOOLTIPS = ("Denoised video latents [B, z_dim, F, H, W] (feed into TT_VAEDecode)",)
+    FUNCTION = "sample"
+    CATEGORY = "Tenstorrent/video"
+    DESCRIPTION = "Run wan22 denoising on the tt-metal server; returns video LATENT for TT_VAEDecode"
+
+    def sample(self, model, positive, negative, num_inference_steps, guidance_scale,
+               guidance_scale_2, flow_shift, boundary_ratio, seed) -> Tuple:
+        if not hasattr(model, "client"):
+            raise RuntimeError("TT_WanSampler requires a Tenstorrent MODEL from TT_CheckpointLoader.")
+        if getattr(model, "model_type", None) != "wan22":
+            raise RuntimeError(
+                f"TT_WanSampler requires a wan22 model (got '{getattr(model, 'model_type', None)}'). "
+                "Select 'wan22' in TT_CheckpointLoader."
+            )
+
+        positive_text = _extract_prompt_text(positive) or "a cinematic shot of a city at night"
+        negative_text = _extract_prompt_text(negative) or ""
+
+        logger.info(
+            f"TT_WanSampler: steps={num_inference_steps}, guidance={guidance_scale}/{guidance_scale_2}, "
+            f"flow_shift={flow_shift}, boundary_ratio={boundary_ratio}, seed={seed}"
+        )
+        logger.info(f"  positive: {positive_text[:80]!r}")
+
+        latents = model.client.denoise_video(
+            prompt=positive_text,
+            negative_prompt=negative_text,
+            num_inference_steps=int(num_inference_steps),
+            guidance_scale=float(guidance_scale),
+            guidance_scale_2=float(guidance_scale_2),
+            flow_shift=float(flow_shift),
+            boundary_ratio=float(boundary_ratio),
+            seed=int(seed),
+        )
+        logger.info(f"TT_WanSampler: received latents {tuple(latents.shape)} via /video/denoise")
+        return ({"samples": latents},)
+
+
 class TT_TextToVideo:
     """
     Generate a video (frames) from text on the tt-metal server (wan22).
 
-    Wan2.2 is a monolithic text->video model with no staged ksampler/VAE, so it
-    has its own node. Output is an IMAGE batch of T frames [T, H, W, C] in [0, 1],
-    which can be saved (Save Image) or fed to a video-combine node.
+    Monolithic one-call path (text-encode + sample + VAE-decode in a single
+    ``/video/generations`` request). For a staged graph (CLIP Text Encode ->
+    TT_WanSampler -> TT_VAEDecode), use those nodes instead. Output is an IMAGE
+    batch of T frames [T, H, W, C] in [0, 1], which can be saved (Save Image) or
+    fed to a video-combine node.
     """
 
     @classmethod

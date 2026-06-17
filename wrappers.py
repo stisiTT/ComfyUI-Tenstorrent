@@ -222,14 +222,22 @@ class TTCLIPWrapper:
                 text, self.tokenizer_g, return_word_ids,
                 pad_with_end=False, **kwargs  # CLIP-G pads with 0
             )
-            return {"l": tokens_l, "g": tokens_g}
+            result = {"l": tokens_l, "g": tokens_g}
         else:
             # SD1.x/SD2.x single tokenizer
             tokens = self._tokenize_single(
                 text, self.tokenizer, return_word_ids,
                 pad_with_end=True, **kwargs
             )
-            return {"l": tokens}
+            result = {"l": tokens}
+
+        # Carry the exact prompt text alongside the tokens. The dict flows opaquely
+        # from CLIPTextEncode into encode_from_tokens_scheduled, so this lets the
+        # bridge server encode the *real* string instead of a lossy CLIP
+        # tokenize->reconstruct round-trip (truncated at 77 tokens). Essential for
+        # wan22's umT5 encoder and for long/non-English prompts.
+        result["tt_text"] = text
+        return result
 
     def _tokenize_single(
         self,
@@ -314,9 +322,11 @@ class TTCLIPWrapper:
         Returns:
             List of (conditioning_tensor, metadata_dict) tuples in CONDITIONING format
         """
-        # Extract original text from tokens for bridge server
-        # We need to reconstruct or pass through the original prompt
-        original_text = self._reconstruct_text_from_tokens(tokens)
+        # Prefer the exact prompt text carried by tokenize() (lossless). Fall back to
+        # reconstructing from token ids only for tokens dicts that predate tt_text.
+        original_text = tokens.get("tt_text")
+        if original_text is None:
+            original_text = self._reconstruct_text_from_tokens(tokens)
 
         # Create placeholder conditioning tensor
         # Shape depends on model type
