@@ -49,6 +49,7 @@ def _log_lora_status(lora: Optional[Dict[str, Any]]) -> None:
         logger.warning(
             f"LoRA {requested!r} only partially applied "
             f"(unet={lora.get('unet')}, text_encoder={lora.get('text_encoder')}, "
+            f"scale_unet={lora.get('scale_unet')}, scale_clip={lora.get('scale_clip')}, "
             f"reason={lora.get('skipped_reason')})."
         )
 

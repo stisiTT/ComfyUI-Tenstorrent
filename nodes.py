@@ -127,9 +127,14 @@ def _attach_wan_lora_params(params: dict, model) -> None:
     low = lora.get("low_lora_path")
     if not high and not low:
         return
+    scale = lora.get("lora_scale")
+    # Explicit 0.0 means "disabled" — don't send paths so the server restores base weights.
+    # (scale=None means "use server default 1.0"; only skip on an explicit 0.0.)
+    if scale is not None and scale == 0.0:
+        return
     params["high_lora_path"] = high
     params["low_lora_path"] = low
-    params["lora_scale"] = lora.get("lora_scale")
+    params["lora_scale"] = scale
 
 
 def build_denoise_progress_callback(num_steps, unique_id, section_labels=None):
@@ -257,10 +262,10 @@ class TT_LoraLoader:
     """
     Attach a LoRA adapter to a Tenstorrent MODEL handle.
 
-    The LoRA is resolved/downloaded and applied server-side (mirrors the
-    tt-media-server ``lora_path`` / ``lora_scale`` request fields). This node
-    only records the request on the MODEL handle; the values are forwarded to
-    the server by TT_KSampler.
+    Mirrors ComfyUI's native LoraLoader interface: ``strength_model`` controls
+    the UNet (image generation) and ``strength_clip`` controls the CLIP text
+    encoders (prompt interpretation). Set either to 0.0 to skip that component.
+    The values are forwarded to the server by TT_KSampler.
     """
 
     @classmethod
@@ -268,32 +273,55 @@ class TT_LoraLoader:
         return {
             "required": {
                 "model": ("MODEL", {"tooltip": "Model from TT_CheckpointLoader"}),
+                "clip": ("CLIP", {"tooltip": "CLIP from TT_CheckpointLoader"}),
                 "lora_name": (_lora_choices("sdxl"), {
                     "tooltip": "LoRA adapter from ComfyUI/models/loras (select None to disable)"
                 }),
-                "lora_scale": ("FLOAT", {
-                    "default": 0.5, "min": 0.0, "max": 2.0, "step": 0.05,
-                    "tooltip": "LoRA adapter scale"
+                "strength_model": ("FLOAT", {
+                    "default": 1.0, "min": 0.0, "max": 2.0, "step": 0.01,
+                    "tooltip": "LoRA scale applied to the UNet/denoising model"
                 }),
-            }
+                "strength_clip": ("FLOAT", {
+                    "default": 1.0, "min": 0.0, "max": 2.0, "step": 0.01,
+                    "tooltip": "LoRA scale applied to the CLIP text encoder(s)"
+                }),
+            },
+            # NOTE: the legacy `lora_scale` widget was removed from the UI — it shadowed
+            # strength_model/strength_clip and shipped as 0 in saved workflows, silently
+            # zeroing both scales. The apply_lora() signature keeps lora_scale as an
+            # Optional param so old workflows that wired it as a link still pass it.
         }
 
-    RETURN_TYPES = ("MODEL",)
-    RETURN_NAMES = ("model",)
-    OUTPUT_TOOLTIPS = ("Model with LoRA request attached",)
+    RETURN_TYPES = ("MODEL", "CLIP")
+    RETURN_NAMES = ("model", "clip")
+    OUTPUT_TOOLTIPS = ("Model with LoRA request attached", "CLIP passthrough (unchanged)")
     FUNCTION = "apply_lora"
     CATEGORY = "Tenstorrent"
-    DESCRIPTION = "Attach a LoRA (lora_path + lora_scale) to be applied server-side"
+    DESCRIPTION = "Attach a LoRA with separate UNet (strength_model) and CLIP (strength_clip) scales"
 
-    def apply_lora(self, model, lora_name: str, lora_scale: float) -> Tuple:
+    def apply_lora(self, model, clip, lora_name: str, strength_model: float, strength_clip: float,
+                   lora_scale: Optional[float] = None) -> Tuple:
         if not hasattr(model, "with_lora"):
             raise RuntimeError("TT_LoraLoader requires a Tenstorrent MODEL from TT_CheckpointLoader.")
+        # Legacy workflows that wired the old single lora_scale input fan it out to both.
+        if lora_scale is not None:
+            strength_model = lora_scale
+            strength_clip = lora_scale
         lora_path = _resolve_lora_path(lora_name)
         if not lora_path:
             logger.info("TT_LoraLoader: no lora selected, passing model through unchanged")
-            return (model,)
-        logger.info(f"TT_LoraLoader: attaching lora_path='{lora_path}', lora_scale={lora_scale}")
-        return (model.with_lora({"lora_path": lora_path, "lora_scale": lora_scale}),)
+            return (model, clip)
+        logger.info(
+            f"TT_LoraLoader: attaching lora_path='{lora_path}', "
+            f"strength_model={strength_model}, strength_clip={strength_clip}"
+        )
+        # CLIP is passed through unchanged — the clip LoRA scale is applied
+        # server-side at denoise time via the MODEL metadata, not locally.
+        return (model.with_lora({
+            "lora_path": lora_path,
+            "lora_scale_unet": strength_model,
+            "lora_scale_clip": strength_clip,
+        }), clip)
 
 
 class TT_WanLoraLoader:
@@ -306,6 +334,9 @@ class TT_WanLoraLoader:
     set; ``lora_scale`` applies to both. The values are recorded on the MODEL
     handle and forwarded to the server (which loads/binds them on device) by
     TT_WanSampler / TT_TextToVideo.
+
+    Note: ``lora_scale_clip`` is accepted for API consistency with TT_LoraLoader
+    but is a no-op for WAN — WAN uses per-expert scale, not a UNet/CLIP split.
     """
 
     @classmethod
@@ -323,7 +354,15 @@ class TT_WanLoraLoader:
                     "default": 1.0, "min": 0.0, "max": 2.0, "step": 0.05,
                     "tooltip": "LoRA adapter scale (applied to both experts)"
                 }),
-            }
+            },
+            "optional": {
+                # No-op: accepted for workflow compatibility with TT_LoraLoader but
+                # WAN models use per-expert scale, not a UNet/CLIP split.
+                "lora_scale_clip": ("FLOAT", {
+                    "default": 1.0, "min": 0.0, "max": 2.0, "step": 0.01,
+                    "tooltip": "[No-op for WAN] Accepted for node compatibility; WAN uses per-expert scale only"
+                }),
+            },
         }
 
     RETURN_TYPES = ("MODEL",)
@@ -333,7 +372,8 @@ class TT_WanLoraLoader:
     CATEGORY = "Tenstorrent/video"
     DESCRIPTION = "Attach per-expert wan22 LoRA paths (high/low) to be applied server-side"
 
-    def apply_lora(self, model, high_lora_name: str, low_lora_name: str, lora_scale: float) -> Tuple:
+    def apply_lora(self, model, high_lora_name: str, low_lora_name: str, lora_scale: float,
+                   lora_scale_clip: Optional[float] = None) -> Tuple:
         if not hasattr(model, "with_lora"):
             raise RuntimeError("TT_WanLoraLoader requires a Tenstorrent MODEL from TT_CheckpointLoader.")
         if getattr(model, "model_type", None) != "wan22":
@@ -426,7 +466,11 @@ class TT_KSampler:
         # LoRA passthrough (attached via TT_LoraLoader)
         if getattr(model, "lora", None):
             params["lora_path"] = model.lora.get("lora_path")
-            params["lora_scale"] = model.lora.get("lora_scale")
+            # Support both new split-scale keys and the legacy single-scale key from
+            # old wrapper instances (e.g. serialised workflows mid-session).
+            legacy = model.lora.get("lora_scale")
+            params["lora_scale_unet"] = model.lora.get("lora_scale_unet", legacy)
+            params["lora_scale_clip"] = model.lora.get("lora_scale_clip", legacy)
 
         # img2img: not yet supported by the staged SDXL path (the base
         # TtSDXLPipeline standup does not accept an input-latent / denoising-start
@@ -463,7 +507,8 @@ class TT_KSampler:
             params.pop("latent_image", None)
             params.pop("denoise_strength", None)
             params.pop("lora_path", None)
-            params.pop("lora_scale", None)
+            params.pop("lora_scale_unet", None)
+            params.pop("lora_scale_clip", None)
             images = client.generate_image(**params)  # [B, H, W, C] in [0, 1]
             return ({"samples": images, "tt_already_decoded": True},)
 
@@ -749,7 +794,12 @@ class TT_ModelInfo:
                 if model.server_info:
                     lines.append(f"Workers:      {model.server_info.get('workers_alive')}/{model.server_info.get('workers_total')}")
                 if getattr(model, "lora", None):
-                    lines.append(f"LoRA:         {model.lora.get('lora_path')} (scale={model.lora.get('lora_scale')})")
+                    legacy = model.lora.get("lora_scale")
+                    lines.append(
+                        f"LoRA:         {model.lora.get('lora_path')} "
+                        f"(unet={model.lora.get('lora_scale_unet', legacy)}, "
+                        f"clip={model.lora.get('lora_scale_clip', legacy)})"
+                    )
                 if hasattr(model, "config"):
                     cfg = model.config
                     lines += [
