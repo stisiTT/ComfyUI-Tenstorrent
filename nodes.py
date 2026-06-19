@@ -222,6 +222,24 @@ class TT_CheckpointLoader:
     CATEGORY = "Tenstorrent"
     DESCRIPTION = "Stand up a tt-metal model (auto-launch server) and return MODEL/CLIP/VAE handles"
 
+    @classmethod
+    def IS_CHANGED(cls, model_type: str, board: str = "", server_url: str = ""):
+        """Re-run the loader (relaunching the server) when liveness changes.
+
+        ComfyUI caches this node's output until IS_CHANGED returns a different
+        token. The token stays stable while the server is healthy and unchanged
+        (so we never trigger a spurious multi-minute relaunch), and changes when
+        the server is unloaded (generation bumps) or has died (health probe). On
+        any error we return NaN to force a re-run, which is the safe default.
+        """
+        try:
+            url = (server_url or "").strip() or None
+            gen = server_manager.get_generation()
+            healthy = server_manager.health_ok(url)  # url=None -> managed server
+            return f"{model_type}|{(board or '').strip()}|{url or ''}|{gen}|{int(healthy)}"
+        except Exception:
+            return float("nan")
+
     def load_checkpoint(self, model_type: str, board: str = "", server_url: str = "") -> Tuple:
         if get_client is None:
             raise RuntimeError("Tenstorrent HTTP client not available (import failed).")

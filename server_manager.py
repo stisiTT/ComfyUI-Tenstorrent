@@ -64,6 +64,9 @@ class _ServerManager:
         self._host = DEFAULT_HOST
         self._port = DEFAULT_PORT
         self._cleanup_registered = False
+        # Bumped on every server stop; used by TT_CheckpointLoader.IS_CHANGED to
+        # force a re-launch after an in-workflow unload (see get_generation()).
+        self._generation = 0
 
     # -- helpers -----------------------------------------------------------
 
@@ -160,6 +163,9 @@ class _ServerManager:
             self._proc = None
             self._model = None
             self._board = None
+            # Bump so the checkpoint loader's IS_CHANGED token changes and ComfyUI
+            # re-runs it (relaunching the server) on the next graph evaluation.
+            self._generation += 1
             self._remove_pid_file()
             # Settle so devices are fully released before any restart.
             time.sleep(3)
@@ -354,6 +360,25 @@ class _ServerManager:
             self._start(model, board)
             return self.base_url
 
+    def get_generation(self) -> int:
+        """Monotonic counter bumped on every server stop (see stop())."""
+        return self._generation
+
+    def health_ok(self, base_url: Optional[str] = None) -> bool:
+        """Best-effort liveness probe; never raises.
+
+        With ``base_url`` omitted, probe the managed server; with it given
+        (external ``server_url`` mode), probe that URL. Returns False on any
+        error/timeout so callers can treat "unsure" as "needs relaunch".
+        """
+        try:
+            if base_url is None:
+                return self._health() is not None
+            resp = requests.get(f"{base_url.rstrip('/')}/health", timeout=5.0)
+            return resp.status_code == 200
+        except Exception:
+            return False
+
 
 # Process-wide singleton.
 _manager = _ServerManager()
@@ -366,6 +391,14 @@ def get_manager() -> "_ServerManager":
 def ensure_server(model: str, board: Optional[str] = None,
                   host: Optional[str] = None, port: Optional[int] = None) -> str:
     return _manager.ensure_server(model, board=board, host=host, port=port)
+
+
+def get_generation() -> int:
+    return _manager.get_generation()
+
+
+def health_ok(base_url: Optional[str] = None) -> bool:
+    return _manager.health_ok(base_url)
 
 
 # Path to the tt-smi console script (its own venv keeps native deps isolated).
