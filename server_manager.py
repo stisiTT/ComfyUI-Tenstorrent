@@ -54,6 +54,19 @@ PID_FILE = os.getenv("TT_SERVER_PID_FILE", "/tmp/tt_comfy_server.pid")
 # Warmup can include first-run trace capture (SD35/Wan up to ~25 min).
 READY_TIMEOUT_SECONDS = float(os.getenv("TT_SERVER_READY_TIMEOUT", "1800"))
 
+# Device nodes a tt-metal worker opens; used to detect which PIDs hold the boards.
+TT_DEVICE_DIR = "/dev/tenstorrent"
+
+# Terminal log markers that mean the server has already given up on startup.
+# Spotting these lets us fail fast instead of waiting out READY_TIMEOUT_SECONDS
+# (the bash wrapper can outlive the python server.py that emitted them).
+_FATAL_LOG_MARKERS = (
+    "Application startup failed",
+    "Warmup timeout",
+    "died during warmup",
+    "kernel compilation timeout",
+)
+
 
 class _ServerManager:
     def __init__(self):
@@ -67,6 +80,10 @@ class _ServerManager:
         # Bumped on every server stop; used by TT_CheckpointLoader.IS_CHANGED to
         # force a re-launch after an in-workflow unload (see get_generation()).
         self._generation = 0
+        # Set True when a teardown had to force-kill a process or left the device
+        # held by a wedged worker. The next _start() resets the boards once when
+        # this is set (abrupt termination leaves PCIe/TLB state inconsistent).
+        self._last_teardown_wedged = False
 
     # -- helpers -----------------------------------------------------------
 
@@ -109,6 +126,158 @@ class _ServerManager:
         except Exception:
             pass
 
+    # -- device / process helpers ------------------------------------------
+
+    @staticmethod
+    def _device_holders(exclude=None) -> set:
+        """Return the set of PIDs that currently hold a ``/dev/tenstorrent`` fd.
+
+        Pure stdlib (scans ``/proc/<pid>/fd``); equivalent to what ``lsof
+        /dev/tenstorrent/*`` reports. Used to confirm a teardown actually
+        released the boards and to detect a stale holder before launch.
+        """
+        exclude = exclude or set()
+        holders = set()
+        try:
+            pids = [d for d in os.listdir("/proc") if d.isdigit()]
+        except Exception:
+            return holders
+        for pid_s in pids:
+            pid = int(pid_s)
+            if pid in exclude:
+                continue
+            fd_dir = f"/proc/{pid_s}/fd"
+            try:
+                for fd in os.listdir(fd_dir):
+                    try:
+                        target = os.readlink(os.path.join(fd_dir, fd))
+                    except OSError:
+                        continue
+                    if target.startswith(TT_DEVICE_DIR):
+                        holders.add(pid)
+                        break
+            except (FileNotFoundError, ProcessLookupError, PermissionError):
+                continue
+        return holders
+
+    def _wait_device_free(self, timeout: float = 10.0) -> bool:
+        """Poll until no process (other than us) holds the boards. True if free."""
+        deadline = time.time() + timeout
+        holders = self._device_holders(exclude={os.getpid()})
+        while holders and time.time() < deadline:
+            time.sleep(0.5)
+            holders = self._device_holders(exclude={os.getpid()})
+        return not holders
+
+    @staticmethod
+    def _kill_group_until_gone(pgid: int, grace: float = 15.0) -> bool:
+        """SIGTERM a process group, then SIGKILL survivors until it is gone.
+
+        Returns True if a forced SIGKILL was required (i.e. the group did not
+        exit on SIGTERM — a wedged worker stuck in a device syscall).
+        """
+        try:
+            os.killpg(pgid, signal.SIGTERM)
+        except ProcessLookupError:
+            return False
+        except Exception as e:
+            logger.warning(f"Could not SIGTERM group {pgid}: {e}")
+
+        deadline = time.time() + grace
+        while time.time() < deadline:
+            try:
+                os.killpg(pgid, 0)  # probe
+            except ProcessLookupError:
+                return False
+            except Exception:
+                return False
+            time.sleep(0.5)
+
+        logger.warning(f"Process group {pgid} survived SIGTERM; sending SIGKILL")
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+        except ProcessLookupError:
+            return True
+        except Exception as e:
+            logger.warning(f"Could not SIGKILL group {pgid}: {e}")
+            return True
+        # Wait for the group to actually disappear.
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            try:
+                os.killpg(pgid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.5)
+        return True
+
+    def _verify_device_released(self, settle: float = 3.0) -> bool:
+        """Confirm the boards are free after a teardown; force-kill stragglers.
+
+        Returns True if the device was released cleanly, False if a wedged
+        holder had to be force-killed (caller should treat the boards as needing
+        a reset before the next launch).
+        """
+        if self._wait_device_free(timeout=settle):
+            return True
+        holders = self._device_holders(exclude={os.getpid()})
+        logger.warning(f"Device still held after teardown by PIDs {sorted(holders)}; force-killing")
+        for pid in holders:
+            try:
+                os.killpg(os.getpgid(pid), signal.SIGKILL)
+            except Exception:
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except Exception:
+                    pass
+        self._wait_device_free(timeout=5.0)
+        return False
+
+    def _ensure_device_free(self, board: str):
+        """Pre-launch guard: clear any stale device holder and, only when a wedge
+        is detected, reset the boards before starting a fresh server.
+
+        A wedge is either a leftover process still holding ``/dev/tenstorrent``
+        at launch time, or a previous teardown that needed a forced kill — both
+        leave the boards in a state where the next worker crashes at device init
+        (``configure_static_tlbs`` / ``get_io_window``) until a tt-smi reset.
+        """
+        wedged = self._last_teardown_wedged
+
+        holders = self._device_holders(exclude={os.getpid()})
+        if holders:
+            logger.warning(
+                f"_ensure_device_free: boards still held by PIDs {sorted(holders)} "
+                f"before launch; force-killing stale holders"
+            )
+            for pid in holders:
+                if not self._pid_looks_like_server(pid):
+                    logger.warning(
+                        f"_ensure_device_free: PID {pid} holds the device but does not "
+                        f"look like a tt-metal server; leaving it alone"
+                    )
+                    continue
+                try:
+                    os.killpg(os.getpgid(pid), signal.SIGKILL)
+                except Exception:
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                    except Exception:
+                        pass
+            self._wait_device_free(timeout=10.0)
+            self._remove_pid_file()
+            wedged = True
+
+        if wedged:
+            logger.warning(
+                "_ensure_device_free: wedged device detected -> resetting all "
+                "Tenstorrent boards before launch"
+            )
+            reset_all_boards()
+
+        # Consumed: the upcoming launch starts from a known-clean state.
+        self._last_teardown_wedged = False
+
     # -- lifecycle ---------------------------------------------------------
 
     def _register_cleanup(self):
@@ -136,30 +305,32 @@ class _ServerManager:
             proc = self._proc
             if proc is None:
                 return
+            forced = False
             if proc.poll() is None:
                 logger.info(f"Stopping tt-metal server (pid={proc.pid}, model={self._model})")
                 try:
                     pgid = os.getpgid(proc.pid)
-                    os.killpg(pgid, signal.SIGTERM)
                 except Exception:
+                    pgid = None
+                if pgid is not None:
+                    # Kill the whole group and don't return until it is actually
+                    # gone — a wedged worker outlives the bash wrapper and only
+                    # dies to SIGKILL.
+                    forced = self._kill_group_until_gone(pgid, grace=15.0)
+                else:
                     try:
                         proc.terminate()
-                    except Exception:
-                        pass
-                # Wait up to 15s for graceful shutdown (device release).
-                deadline = time.time() + 15
-                while proc.poll() is None and time.time() < deadline:
-                    time.sleep(0.5)
-                if proc.poll() is None:
-                    logger.warning("tt-metal server did not stop gracefully, forcing kill")
-                    try:
-                        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                        proc.wait(timeout=15)
                     except Exception:
                         try:
                             proc.kill()
                         except Exception:
                             pass
-                    proc.wait(timeout=10)
+                        forced = True
+            # The tracked proc is the bash wrapper; confirm the boards are
+            # actually released (a worker can survive it) before returning.
+            released = self._verify_device_released(settle=3.0)
+            self._last_teardown_wedged = self._last_teardown_wedged or forced or (not released)
             self._proc = None
             self._model = None
             self._board = None
@@ -167,8 +338,6 @@ class _ServerManager:
             # re-runs it (relaunching the server) on the next graph evaluation.
             self._generation += 1
             self._remove_pid_file()
-            # Settle so devices are fully released before any restart.
-            time.sleep(3)
 
     def _pid_looks_like_server(self, pid: int) -> bool:
         """Best-effort guard against killing a recycled PID.
@@ -225,41 +394,20 @@ class _ServerManager:
                 return
 
             logger.info(f"PID-file fallback: stopping orphaned tt-metal server (pgid={pgid}, model={model})")
-            try:
-                os.killpg(pgid, signal.SIGTERM)
-            except ProcessLookupError:
-                self._remove_pid_file()
-                return
-            except Exception as e:
-                logger.warning(f"Could not SIGTERM orphaned server group {pgid}: {e}")
-                self._remove_pid_file()
-                return
-
-            # Wait up to 15s for graceful shutdown (device release).
-            deadline = time.time() + 15
-            while time.time() < deadline:
-                try:
-                    os.killpg(pgid, 0)  # probe: alive?
-                except ProcessLookupError:
-                    break
-                except Exception:
-                    break
-                time.sleep(0.5)
-            else:
-                logger.warning("Orphaned tt-metal server did not stop gracefully, forcing kill")
-                try:
-                    os.killpg(pgid, signal.SIGKILL)
-                except Exception:
-                    pass
-
+            forced = self._kill_group_until_gone(pgid, grace=15.0)
             self._remove_pid_file()
-            # Settle so devices are fully released before any reset/restart.
-            time.sleep(3)
+            # Confirm the boards are released; force-kill any wedged straggler.
+            released = self._verify_device_released(settle=3.0)
+            self._last_teardown_wedged = self._last_teardown_wedged or forced or (not released)
 
     def _start(self, model: str, board: str):
         script = os.path.join(TT_METAL_DIR, "launch_server.sh")
         if not os.path.isfile(script):
             raise RuntimeError(f"launch_server.sh not found at {script} (set TT_METAL_DIR)")
+
+        # Make sure no stale process holds the boards and reset them if the last
+        # teardown left them wedged, so this launch starts from a clean device.
+        self._ensure_device_free(board)
 
         cmd = [
             "./launch_server.sh",
@@ -295,6 +443,17 @@ class _ServerManager:
                     f"tt-metal server exited during startup (model={model}). "
                     f"Last log lines:\n{tail}"
                 )
+            # Fail fast: the python server.py can self-abort (warmup timeout,
+            # worker death) while the bash wrapper lingers, so poll() alone would
+            # make us wait out the full timeout. Catch its terminal log markers.
+            fatal = self._log_has_fatal(log_path)
+            if fatal:
+                tail = self._tail(log_path)
+                self.stop()
+                raise RuntimeError(
+                    f"tt-metal server for '{model}' failed during startup "
+                    f"('{fatal}'). Last log lines:\n{tail}"
+                )
             health = self._health()
             if self._health_matches(model, health):
                 logger.info(f"tt-metal server is healthy at {self.base_url} (model={model})")
@@ -318,6 +477,24 @@ class _ServerManager:
                 return "".join(f.readlines()[-n:])
         except Exception:
             return "(no log available)"
+
+    @staticmethod
+    def _log_has_fatal(path: str, n: int = 80) -> Optional[str]:
+        """Return the first terminal-failure marker found in the log tail, else None.
+
+        The log is truncated on each launch (``open(log_path, "w")``), so markers
+        in the tail belong to the current attempt.
+        """
+        try:
+            with open(path, "r") as f:
+                tail = f.readlines()[-n:]
+        except Exception:
+            return None
+        for line in tail:
+            for marker in _FATAL_LOG_MARKERS:
+                if marker in line:
+                    return marker
+        return None
 
     # -- public API --------------------------------------------------------
 
