@@ -23,6 +23,7 @@ import atexit
 import json
 import logging
 import os
+import shutil
 import signal
 import subprocess
 import threading
@@ -46,7 +47,13 @@ _MODEL_LABEL_HINTS = {
     "sd35": "sd3",
 }
 
-TT_METAL_DIR = os.getenv("TT_METAL_DIR", "/home/stisi/tt-metal")
+# Default to the tt-metal checkout sitting next to this ComfyUI repo (the
+# documented sibling layout: <parent>/ComfyUI and <parent>/tt-metal). Override
+# with TT_METAL_DIR if it lives elsewhere. __file__ is
+# <ComfyUI>/custom_nodes/tenstorrent_nodes/server_manager.py, so three dirnames
+# up is the ComfyUI root.
+_COMFYUI_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+TT_METAL_DIR = os.getenv("TT_METAL_DIR", os.path.join(os.path.dirname(_COMFYUI_ROOT), "tt-metal"))
 DEFAULT_HOST = os.getenv("TT_SERVER_HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.getenv("TT_SERVER_PORT", "8000"))
 PID_FILE = os.getenv("TT_SERVER_PID_FILE", "/tmp/tt_comfy_server.pid")
@@ -578,8 +585,10 @@ def health_ok(base_url: Optional[str] = None) -> bool:
     return _manager.health_ok(base_url)
 
 
-# Path to the tt-smi console script (its own venv keeps native deps isolated).
-TT_SMI_BIN = os.getenv("TT_SMI_BIN", "/home/stisi/tt-smi/venv/bin/tt-smi")
+# Path to the tt-smi console script. Prefer an explicit TT_SMI_BIN, else resolve
+# it from PATH (tt-installer puts tt-smi there); fall back to the bare name so a
+# clear "not found" error surfaces at call time rather than a hardcoded path.
+TT_SMI_BIN = os.getenv("TT_SMI_BIN") or shutil.which("tt-smi") or "tt-smi"
 
 
 def _reset_all_boards_subprocess():

@@ -36,7 +36,8 @@ set -euo pipefail
 #===============================================================================
 # Configuration
 #===============================================================================
-readonly COMFYUI_DIR="${COMFYUI_DIR:-/home/stisi/ComfyUI}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly COMFYUI_DIR="${COMFYUI_DIR:-${SCRIPT_DIR}}"
 readonly COMFYUI_VENV="${COMFYUI_DIR}/venv"
 readonly SERVER_PID_FILE="${TT_SERVER_PID_FILE:-/tmp/tt_comfy_server.pid}"
 
