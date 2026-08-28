@@ -63,12 +63,14 @@ READY_TIMEOUT_SECONDS = float(os.getenv("TT_SERVER_READY_TIMEOUT", "1800"))
 
 # ---------------------------------------------------------------------------
 # Launch mode
+#   "subprocess" — spawn <TT_METAL_DIR>/launch_server.sh directly; the server runs
+#                  on the host in tt-metal's venv. This is the default: it needs
+#                  nothing built beyond tt-metal itself.
 #   "docker"     — drive tt-inference-server's run.py to start a containerized
-#                  server (the comfyui-media-server image). This is the default.
-#   "subprocess" — spawn <TT_METAL_DIR>/launch_server.sh directly (the legacy
-#                  makeshift path; server runs on the host in tt-metal's venv).
+#                  server. Opt-in, because it needs a comfyui-media-server image
+#                  built locally first (see INTEGRATION.md, Path B).
 # ---------------------------------------------------------------------------
-LAUNCH_MODE = os.getenv("TT_LAUNCH_MODE", "docker").strip().lower()
+LAUNCH_MODE = os.getenv("TT_LAUNCH_MODE", "subprocess").strip().lower()
 
 # tt-inference-server checkout that holds run.py (sibling of ComfyUI by default).
 TT_INFERENCE_SERVER_DIR = os.getenv(

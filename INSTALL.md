@@ -127,18 +127,15 @@ pip install -r requirements.txt
 
 ```bash
 cd ~/src/ComfyUI
-export TT_LAUNCH_MODE=subprocess      # required: the default (docker) needs a built image
 ./launch_with_http.sh                 # ComfyUI on http://127.0.0.1:8188
 # options: --port 8188  --listen 0.0.0.0
 ```
 
-> **Why `TT_LAUNCH_MODE=subprocess`?** The node defaults to `docker`, which drives
-> tt-inference-server's `run.py` against a `comfyui-media-server` image you would
-> have to build first. This guide sets up the two-repo host path, so select it
-> explicitly. See
-> [`custom_nodes/tenstorrent_nodes/INTEGRATION.md`](custom_nodes/tenstorrent_nodes/INTEGRATION.md)
-> for the docker path and for the separate three-repo stack that runs
-> per-component (UNet/CLIP) LoRA.
+> No environment variables are needed: the node defaults to `subprocess` launch
+> mode and finds tt-metal at `../tt-metal`. There is also a containerized path
+> (`TT_LAUNCH_MODE=docker`) that runs the server through tt-inference-server's
+> `run.py`; it needs an image built first, so it is opt-in. See
+> [`custom_nodes/tenstorrent_nodes/INTEGRATION.md`](custom_nodes/tenstorrent_nodes/INTEGRATION.md).
 
 This activates the ComfyUI venv and runs `main.py --tenstorrent`. Open the web UI,
 build a graph starting from **TT Checkpoint Loader**, and pick a model:

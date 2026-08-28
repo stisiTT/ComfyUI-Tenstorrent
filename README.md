@@ -53,16 +53,17 @@ the subprocess launch + the local HTTP socket.
 
 The node can stand the server up two ways, selected by `TT_LAUNCH_MODE`:
 
-- **`docker` (default)** — drives `tt-inference-server`'s
+- **`subprocess` (default)** — spawns `<TT_METAL_DIR>/launch_server.sh` directly on
+  the host, no container. Needs nothing built beyond tt-metal itself, which is why
+  it is the default.
+- **`docker`** — drives `tt-inference-server`'s
   `run.py --workflow server --docker-server --dev-mode --override-docker-image`
-  to start the `comfyui-media-server` container. Requires the image to be built
-  first (see `tt-inference-server/comfyui-media-server/LOCAL_TESTING.md`).
-- **`subprocess`** — spawns `<TT_METAL_DIR>/launch_server.sh` directly on the host
-  (the legacy makeshift path; no container).
+  to start the `comfyui-media-server` container. Opt-in: build the image first
+  (see `tt-inference-server/comfyui-media-server/LOCAL_TESTING.md`).
 
 ```
-docker mode:       node → run.py --docker-server → container (comfyui-media-server) → TT HW
 subprocess mode:   node → <TT_METAL_DIR>/launch_server.sh → server.py → TT HW
+docker mode:       node → run.py --docker-server → container (comfyui-media-server) → TT HW
 ```
 
 ## Configuration (environment variables)
@@ -71,7 +72,7 @@ All read by `server_manager.py`; every default is overridable:
 
 | Variable            | Default                                  | Purpose |
 |---------------------|------------------------------------------|---------|
-| `TT_LAUNCH_MODE`    | `docker`                                 | `docker` (run.py container) or `subprocess` (launch_server.sh) |
+| `TT_LAUNCH_MODE`    | `subprocess`                             | `subprocess` (launch_server.sh on the host) or `docker` (run.py container) |
 | `TT_INFERENCE_SERVER_DIR` | `../tt-inference-server`            | Checkout holding `run.py` (docker mode) |
 | `TT_INFERENCE_PY`   | `<TT_INFERENCE_SERVER_DIR>/venv/bin/python` | Python that runs `run.py` (docker mode) |
 | `TT_COMFYUI_IMAGE`  | `comfyui-media-server:dev`               | Image passed to `--override-docker-image` (docker mode) |

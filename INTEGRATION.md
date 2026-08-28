@@ -27,12 +27,26 @@ ComfyUI (this repo)                 tt-metal                         tt-inferenc
 
 ## Which versions to run (pin these)
 
+Both stacks give the nodes identical behaviour, split UNet/CLIP LoRA included.
+They differ only in where the server code lives and how many repos you clone.
+
+**Stack 1 — two repos, the default. Use this unless you need the container.**
+
 | Repo | Branch | Commit | Pushed? | Notes |
 |------|--------|--------|---------|-------|
-| tt-metal | `stisi/sdxl-per-component-lora` | `eee0f689b4c` | yes (origin) | **`TT_METAL_HOME` for the relocated stack.** Carries PR #47509's `fuse_lora(lora_scale, clip_scale)` — the per-component LoRA the demo shows. Must be **built** (`./build_metal.sh`, `./create_venv.sh`). |
-| tt-inference-server | `samt/comfyui-media-server` | `6a4085df0` | yes (origin) | **`TT_METAL_DIR` for the relocated stack.** The server relocated into `comfyui-media-server/`, plus the two fixes the relocation needed (`TT_METAL_HOME` clobbering, collapsed `fuse_lora` signature). |
-| ComfyUI | `master` (stisiTT/ComfyUI) | `b5607d01`+ | yes (origin) | These custom nodes. Fork of comfyanonymous/ComfyUI; the nodes live entirely in `custom_nodes/tenstorrent_nodes/`. |
-| tt-metal | `samt/standalone-media-20260703` | `ce05994325a` | yes (origin) | *Pre-relocation stack only.* Amalgamation of the PRs below **plus** its own copy of the server at the repo root. Self-consistent, but its `fuse_lora` is the older `(lora_scale_unet, lora_scale_clip)`. |
+| ComfyUI | `master` (stisiTT/ComfyUI) | `d37fd794`+ | yes (origin) | These custom nodes. Fork of comfyanonymous/ComfyUI; the nodes live entirely in `custom_nodes/tenstorrent_nodes/`. |
+| tt-metal | `samt/standalone-media-20260703` | `ce05994325a` | yes (origin) | Amalgamation of the PRs below **plus** its own copy of the server at the repo root. Full per-component LoRA (UNet scale + text-encoder LoRA) under the `(lora_scale_unet, lora_scale_clip)` names. Must be **built** (`./build_metal.sh`, `./create_venv.sh`). |
+
+Nothing to set: `TT_LAUNCH_MODE` defaults to `subprocess` and `TT_METAL_DIR` to
+`../tt-metal`, so the sibling layout just works.
+
+**Stack 2 — three repos, the relocated server.** Where this is headed, and what
+the container path is built from. Same node-facing behaviour; more moving parts.
+
+| Repo | Branch | Commit | Pushed? | Notes |
+|------|--------|--------|---------|-------|
+| tt-inference-server | `samt/comfyui-media-server` | `6a4085df0` | yes (origin) | `TT_METAL_DIR`. The server relocated into `comfyui-media-server/`, plus the two fixes the relocation needed (`TT_METAL_HOME` clobbering, collapsed `fuse_lora` signature). |
+| tt-metal | `stisi/sdxl-per-component-lora` | `eee0f689b4c` | yes (origin) | `TT_METAL_HOME`. PR #47509 after review collapsed the signature to `fuse_lora(lora_scale, clip_scale)`. Still an **open PR**, not on `main`. |
 
 ### The tt-metal PRs the server depends on
 
@@ -59,37 +73,46 @@ like):
 ### Path A — subprocess (works today) ✅
 
 The nodes spawn `launch_server.sh` on the host, no container — so there is no
-image to build, though tt-metal itself must already be built. This is the path
-the 2026-08-16/17 wan22 + LoRA runs used, and the only one that works right now
-(see Path B's stale-image blocker).
+image to build, though tt-metal itself must already be built. This is the
+default mode and the only one that works right now (see Path B's stale-image
+blocker).
 
-Since the relocation, the server itself lives in **tt-inference-server**
-(`comfyui-media-server/`), while `TT_METAL_HOME` still points at the built
-tt-metal checkout that supplies `ttnn` / `models.*`:
+**Stack 1 (default).** With the sibling layout there is nothing to set:
 
 ```bash
-export TT_LAUNCH_MODE=subprocess                   # docker is the default now
+export HF_HOME=/path/to/hf_cache      # optional: so weights don't download on first request
+cd <ComfyUI>
+./launch_with_http.sh --port 8188 --listen 127.0.0.1
+```
+
+`TT_METAL_DIR` defaults to `../tt-metal`, whose repo root holds `launch_server.sh`
+and the runners. See [`../../INSTALL.md`](../../INSTALL.md) for the full setup.
+
+**Stack 2 (relocated server).** The server lives in tt-inference-server, while
+`TT_METAL_HOME` points at the tt-metal checkout supplying `ttnn` / `models.*`:
+
+```bash
 export TT_METAL_DIR=<tt-inference-server>/comfyui-media-server   # holds launch_server.sh
-export TT_METAL_HOME=<tt-metal>                    # built tt-metal on stisi/sdxl-per-component-lora
-export HF_HOME=/path/to/hf_cache                   # so weights don't download on first request
+export TT_METAL_HOME=<tt-metal>                    # built, on stisi/sdxl-per-component-lora
 cd <ComfyUI>
 ./launch_with_http.sh --port 8188 --listen 127.0.0.1
 ```
 
 `launch_subprocess_mode.sh` in the ComfyUI root wraps exactly this.
 
-> **The two stacks are not interchangeable — do not mix them.** `fuse_lora`'s
-> signature differs between the tt-metal branches, so the server copy and the
-> `TT_METAL_HOME` checkout have to come from the same stack:
+> **Do not mix the stacks.** `fuse_lora`'s signature differs between the tt-metal
+> branches, so the server copy and the `TT_METAL_HOME` checkout must come from the
+> same stack:
 >
 > | | server (`TT_METAL_DIR`) | tt-metal (`TT_METAL_HOME`) | `fuse_lora` |
 > |---|---|---|---|
-> | **Relocated** (this demo) | tt-inference-server `comfyui-media-server/` @ `6a4085df0` | `stisi/sdxl-per-component-lora` @ `eee0f689b4c` | `(lora_scale, clip_scale)` |
-> | **Pre-relocation** | tt-metal repo root | `samt/standalone-media-20260703` @ `ce05994325a` | `(lora_scale_unet, lora_scale_clip)` |
+> | **Stack 1** | tt-metal repo root | `samt/standalone-media-20260703` @ `ce05994325a` | `(lora_scale_unet, lora_scale_clip)` |
+> | **Stack 2** | tt-inference-server `comfyui-media-server/` @ `6a4085df0` | `stisi/sdxl-per-component-lora` @ `eee0f689b4c` | `(lora_scale, clip_scale)` |
 >
 > Pairing the relocated server with `samt/standalone-media-20260703` raises
 > `TypeError: fuse_lora() got an unexpected keyword argument 'clip_scale'` on the
-> first LoRA request.
+> first LoRA request. Either way the HTTP contract the nodes speak is the same:
+> the request body always carries `lora_scale_unet` / `lora_scale_clip`.
 
 Then pick a model in the **TT Checkpoint Loader** node. It spawns the server,
 polls `/health`, and the staged ops hit `server.py`. First warmup is slow
@@ -108,7 +131,7 @@ python run.py --model <sdxl|wan> --workflow server \
     --override-docker-image <locally-built comfyui-media-server image>
 ```
 
-**Now wired — the node drives this by default** (`TT_LAUNCH_MODE=docker`).
+**Now wired, but opt-in** (`TT_LAUNCH_MODE=docker`).
 `server_manager.py` builds and runs the `run.py … --docker-server --dev-mode
 --override-docker-image comfyui-media-server:dev` command, discovers the
 container, polls `/health`, and stops the container on teardown. The container
@@ -125,7 +148,8 @@ Custom mesh graph descriptor file not found:
 ```
 
 That is the `TT_METAL_HOME` bug fixed in `469f987fa`; the image has to be rebuilt
-to pick it up. Until then docker mode does not work, despite being the default.
+to pick it up. Until then docker mode does not work — which is why `subprocess`
+is the default.
 
 ```bash
 cd <tt-inference-server>/comfyui-media-server
@@ -142,10 +166,9 @@ See `tt-inference-server/comfyui-media-server/LOCAL_TESTING.md` for details.
 Plain-English list of the gaps, in rough priority order:
 
 1. **Rebuild the Docker image.** `comfyui-media-server:dev` predates the fixes on
-   `samt/comfyui-media-server`, so docker mode — which is now the *default* —
-   crashes wan22 at warmup. Either rebuild the image or flip the default back to
-   `subprocess`; shipping a broken default is the most likely way a new user
-   bounces off this.
+   `samt/comfyui-media-server`, so docker mode crashes wan22 at warmup. The
+   default is `subprocess` until the image is rebuilt; flip it back in
+   `server_manager.py` once it is.
 2. **Two copies of the server will drift.** The server exists both at the
    tt-metal branch root and in `comfyui-media-server/`. The two fixes in
    `6a4085df0` went into the tt-inference-server copy only — the tt-metal-root

@@ -7,15 +7,14 @@
 ################################################################################
 # ComfyUI launcher — Tenstorrent nodes in SUBPROCESS mode
 #
-# The node's docker mode (TT_LAUNCH_MODE=docker, the default) drives a prebuilt
-# comfyui-media-server image via tt-inference-server's run.py. Until that image
-# is rebuilt past the TT_METAL_HOME fix it crashes wan22 on p300x2 with:
-#   Custom mesh graph descriptor file not found:
-#   .../comfyui-media-server/tt_metal/fabric/mesh_graph_descriptors/p300_x2_mesh_graph_descriptor.textproto
+# Subprocess mode is already the node's default, but its default TT_METAL_DIR is
+# ../tt-metal — the two-repo stack, where the server sits at the tt-metal repo
+# root. This script selects the OTHER subprocess stack: the relocated server in
+# tt-inference-server/comfyui-media-server, run against a built tt-metal checkout
+# (still no Docker, no image).
 #
-# This script instead selects the known-good host path: spawn
-# tt-inference-server/comfyui-media-server/launch_server.sh directly against an
-# already-built tt-metal checkout (no Docker, no image).
+# Use this only if you are on the relocated stack. For the two-repo default,
+# ./launch_with_http.sh on its own is enough.
 #
 # The two paths below must come from the SAME stack — the relocated server calls
 # fuse_lora(lora_scale, clip_scale), which only the per-component-LoRA tt-metal
