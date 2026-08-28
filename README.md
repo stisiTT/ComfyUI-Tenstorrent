@@ -37,12 +37,15 @@ the subprocess launch + the local HTTP socket.
 2. **A built tt-metal checkout** on the branch that contains the standalone media
    server (`server.py`, `launch_server.sh`, `requirements-server.txt`,
    `device_specs.py`, `worker.py`, the SDXL/Wan runners), with its `python_env`
-   created (`./create_venv.sh`). The current known-good branch is
-   **`samt/standalone-media-20260703`** (commit `ce05994325a`, on origin). By
-   default these nodes look for tt-metal as a sibling of the ComfyUI checkout
-   (`../tt-metal`); override with `TT_METAL_DIR`. For exact commit pinning, the
-   PR breakdown, and where the server is headed (tt-inference-server), see
-   [`INTEGRATION.md`](./INTEGRATION.md).
+   created (`./create_venv.sh`). By default these nodes look for tt-metal as a
+   sibling of the ComfyUI checkout (`../tt-metal`); override with `TT_METAL_DIR`.
+
+   There are two self-consistent stacks and they cannot be mixed — the relocated
+   server needs `fuse_lora(lora_scale, clip_scale)`, which only the
+   per-component-LoRA tt-metal branch accepts. **Read
+   [`INTEGRATION.md`](./INTEGRATION.md) for the version matrix** before pinning
+   anything; it also has the PR breakdown and where the server is headed
+   (tt-inference-server).
 3. **Model weights** reachable by the tt-metal server (downloaded into its
    `HF_HOME` / ttnn model cache).
 
