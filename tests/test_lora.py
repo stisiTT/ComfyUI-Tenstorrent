@@ -1,7 +1,19 @@
 #!/usr/bin/env python3
 """End-to-end LoRA fix exerciser. Run against a live tt-metal server.
 
-  SDXL_LORA=<path> WAN_LORA=<path> TT_SERVER_URL=http://127.0.0.1:8000 python3 test_lora.py
+  SDXL_LORA=<path> WAN_LORA=<path> TT_SERVER_URL=http://127.0.0.1:8000 \
+      venv/bin/python test_lora.py
+
+Needs `requests`, so use ComfyUI's venv rather than the system python.
+
+SDXL_LORA must point at an adapter that carries text-encoder tensors -- most
+published SDXL LoRAs are UNet-only, and against those the clip-scale assertions
+cannot pass. The Bug 1 test detects this and skips rather than reporting a
+spurious failure. Check an adapter with:
+
+  python3 -c "import json,struct,sys; f=open(sys.argv[1],'rb'); \
+h=json.loads(f.read(struct.unpack('<Q',f.read(8))[0])); \
+print(any('text_encoder' in k or k.startswith('lora_te') for k in h))" <lora>
 
 Bug 1 (SDXL): verified from the response body's `lora` status object.
 Bug 2 (WAN): no lora status in response — HTTP 200 + server log check required.
@@ -30,6 +42,25 @@ def check(label, cond):
     return cond
 
 
+def lora_has_text_encoder(path):
+    """True if the adapter actually carries text-encoder tensors.
+
+    Most published SDXL LoRAs are UNet-only. Against one of those the
+    text_encoder assertions below can never pass -- there is nothing to fuse --
+    so the split-scale test needs an adapter that has them.
+    """
+    import json
+    import struct
+
+    try:
+        with open(path, "rb") as f:
+            header = json.loads(f.read(struct.unpack("<Q", f.read(8))[0]))
+    except Exception as e:
+        print(f"  WARN: could not read {path}: {e}")
+        return None
+    return any(k.startswith("lora_te") or "text_encoder" in k for k in header if k != "__metadata__")
+
+
 def sdxl_denoise(scale_unet=None, scale_clip=None, scale=None):
     body = {
         "prompt": "a pixel art castle",
@@ -51,6 +82,11 @@ def test_bug1():
     print("Bug 1 (SDXL split scales):")
     if not SDXL:
         print("  SKIP: set SDXL_LORA env var")
+        return True
+    if lora_has_text_encoder(SDXL) is False:
+        print(f"  SKIP: {SDXL} is UNet-only (no text-encoder tensors).")
+        print("        The clip-scale assertions need an adapter that has them,")
+        print("        otherwise text_encoder=False is correct, not a regression.")
         return True
     ok = True
 
