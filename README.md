@@ -37,10 +37,30 @@ the subprocess launch + the local HTTP socket.
 2. **A built tt-metal checkout** on the branch that contains the standalone media
    server (`server.py`, `launch_server.sh`, `requirements-server.txt`,
    `device_specs.py`, `worker.py`, the SDXL/Wan runners), with its `python_env`
-   created (`./create_venv.sh`). By default these nodes look for tt-metal as a
-   sibling of the ComfyUI checkout (`../tt-metal`); override with `TT_METAL_DIR`.
+   created (`./create_venv.sh`). The current known-good branch is
+   **`samt/standalone-media-20260703`** (commit `ce05994325a`, on origin). By
+   default these nodes look for tt-metal as a sibling of the ComfyUI checkout
+   (`../tt-metal`); override with `TT_METAL_DIR`. For exact commit pinning, the
+   PR breakdown, and where the server is headed (tt-inference-server), see
+   [`INTEGRATION.md`](./INTEGRATION.md).
 3. **Model weights** reachable by the tt-metal server (downloaded into its
    `HF_HOME` / ttnn model cache).
+
+## Launch modes
+
+The node can stand the server up two ways, selected by `TT_LAUNCH_MODE`:
+
+- **`docker` (default)** — drives `tt-inference-server`'s
+  `run.py --workflow server --docker-server --dev-mode --override-docker-image`
+  to start the `comfyui-media-server` container. Requires the image to be built
+  first (see `tt-inference-server/comfyui-media-server/LOCAL_TESTING.md`).
+- **`subprocess`** — spawns `<TT_METAL_DIR>/launch_server.sh` directly on the host
+  (the legacy makeshift path; no container).
+
+```
+docker mode:       node → run.py --docker-server → container (comfyui-media-server) → TT HW
+subprocess mode:   node → <TT_METAL_DIR>/launch_server.sh → server.py → TT HW
+```
 
 ## Configuration (environment variables)
 
@@ -48,7 +68,12 @@ All read by `server_manager.py`; every default is overridable:
 
 | Variable            | Default                                  | Purpose |
 |---------------------|------------------------------------------|---------|
-| `TT_METAL_DIR`      | `../tt-metal` (sibling of ComfyUI)       | tt-metal checkout that holds `launch_server.sh` |
+| `TT_LAUNCH_MODE`    | `docker`                                 | `docker` (run.py container) or `subprocess` (launch_server.sh) |
+| `TT_INFERENCE_SERVER_DIR` | `../tt-inference-server`            | Checkout holding `run.py` (docker mode) |
+| `TT_INFERENCE_PY`   | `<TT_INFERENCE_SERVER_DIR>/venv/bin/python` | Python that runs `run.py` (docker mode) |
+| `TT_COMFYUI_IMAGE`  | `comfyui-media-server:dev`               | Image passed to `--override-docker-image` (docker mode) |
+| `TT_RUNPY_EXTRA_ARGS` | (empty)                                | Extra args appended to `run.py` (e.g. weight mounts) |
+| `TT_METAL_DIR`      | `../tt-metal` (sibling of ComfyUI)       | tt-metal checkout that holds `launch_server.sh` (subprocess mode) |
 | `TT_SMI_BIN`        | `tt-smi` resolved from `PATH`            | tt-smi console script (board reset / detection) |
 | `TT_SERVER_HOST`    | `127.0.0.1`                              | Host the tt-metal server binds / is reached on |
 | `TT_SERVER_PORT`    | `8000`                                   | Port for the tt-metal server |

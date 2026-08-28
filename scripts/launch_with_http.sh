@@ -59,7 +59,16 @@ status()  { echo -e "\033[1;34m===> $*\033[0m"; }
 cleanup() {
     local exit_code=$?
     if [[ -f "${SERVER_PID_FILE}" ]]; then
-        local pgid pid
+        local pgid pid container
+        # Docker mode: the node records a container name — stop that container.
+        container=$(grep -o '"container"[[:space:]]*:[[:space:]]*"[^"]*"' "${SERVER_PID_FILE}" 2>/dev/null | sed -E 's/.*"container"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/' || true)
+        if [[ -n "${container}" ]]; then
+            warn "Backstop: stopping tt-inference-server container ${container}"
+            docker stop "${container}" >/dev/null 2>&1 || true
+            docker rm -f "${container}" >/dev/null 2>&1 || true
+            rm -f "${SERVER_PID_FILE}" 2>/dev/null || true
+            exit "${exit_code}"
+        fi
         pgid=$(grep -o '"pgid"[[:space:]]*:[[:space:]]*[0-9]*' "${SERVER_PID_FILE}" 2>/dev/null | grep -o '[0-9]*' || true)
         pid=$(grep -o '"pid"[[:space:]]*:[[:space:]]*[0-9]*' "${SERVER_PID_FILE}" 2>/dev/null | grep -o '[0-9]*' || true)
         if [[ -n "${pgid}" ]] && kill -0 "-${pgid}" 2>/dev/null; then
