@@ -17,6 +17,7 @@ Architecture (all-custom nodes, server owns the denoise loop):
 import io
 import logging
 import os
+import random
 import sys
 from typing import Optional, Tuple
 
@@ -1048,6 +1049,78 @@ class TT_LTXVideoPro:
         from comfy_api.latest import InputImpl
 
         return (InputImpl.VideoFromFile(io.BytesIO(video_bytes)),)
+
+
+class TT_PreviewVideo:
+    """
+    Show a VIDEO in the graph without writing it to the output directory.
+
+    The video equivalent of PreviewImage: it writes into ComfyUI's temp
+    directory, which is cleared on restart, and hands the frontend a
+    PreviewVideo payload so the node renders a player.
+
+    Deliberately avoids re-encoding. A VIDEO backed by an in-memory buffer --
+    which is what the TT LTX nodes produce, since the server returns an already
+    muxed MP4 -- is written out byte for byte. Anything else falls back to
+    save_to() with format and codec left on auto, which copies packets into the
+    new container rather than decoding and encoding frames.
+
+    That makes previewing cheaper than saving: SaveVideo remuxes in order to
+    attach prompt metadata, and this does not have to.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"video": ("VIDEO", {"tooltip": "Video to preview"})}}
+
+    RETURN_TYPES = ()
+    FUNCTION = "preview"
+    OUTPUT_NODE = True
+    CATEGORY = "Tenstorrent/video"
+    DESCRIPTION = (
+        "Preview a video in the workflow without saving it to the output directory.\n\n"
+        "Writes to ComfyUI's temp directory (cleared on restart) and never re-encodes."
+    )
+    SEARCH_ALIASES = ["preview video", "show video", "view video", "video viewer"]
+
+    def preview(self, video):
+        import folder_paths
+
+        temp_dir = folder_paths.get_temp_directory()
+        os.makedirs(temp_dir, exist_ok=True)
+        suffix = "".join(random.choice("abcdefghijklmnopqrstuvwxyz") for _ in range(5))
+        filename = f"tt_preview_{suffix}.mp4"
+        path = os.path.join(temp_dir, filename)
+
+        wrote_raw = False
+        source = None
+        try:
+            source = video.get_stream_source()
+        except Exception:
+            source = None
+
+        # An in-memory source is already an encoded container; copy the bytes.
+        if isinstance(source, io.BytesIO):
+            data = source.getvalue()
+            with open(path, "wb") as fh:
+                fh.write(data)
+            wrote_raw = True
+            logger.info(f"TT_PreviewVideo: wrote {len(data)} bytes verbatim to {filename}")
+
+        if not wrote_raw:
+            # format/codec left at their defaults so save_to copies packets
+            # instead of decoding and re-encoding.
+            video.save_to(path)
+            logger.info(f"TT_PreviewVideo: remuxed to {filename} ({os.path.getsize(path)} bytes)")
+
+        from comfy_api.latest import io as comfy_io
+        from comfy_api.latest import ui as comfy_ui
+
+        return {
+            "ui": comfy_ui.PreviewVideo(
+                [comfy_ui.SavedResult(filename, "", comfy_io.FolderType.temp)]
+            ).as_dict()
+        }
 
 
 class TT_ModelInfo:

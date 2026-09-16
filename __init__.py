@@ -17,6 +17,7 @@ from .nodes import (
     TT_TextToVideo,
     TT_LTXVideo,
     TT_LTXVideoPro,
+    TT_PreviewVideo,
     TT_ModelInfo,
     TT_UnloadModel,
 )
@@ -32,6 +33,7 @@ NODE_CLASS_MAPPINGS = {
     "TT_TextToVideo": TT_TextToVideo,
     "TT_LTXVideo": TT_LTXVideo,
     "TT_LTXVideoPro": TT_LTXVideoPro,
+    "TT_PreviewVideo": TT_PreviewVideo,
     "TT_ModelInfo": TT_ModelInfo,
     "TT_UnloadModel": TT_UnloadModel,
 }
@@ -47,6 +49,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "TT_TextToVideo": "TT Text To Video",
     "TT_LTXVideo": "TT LTX Video (AV)",
     "TT_LTXVideoPro": "TT LTX Video Pro (AV)",
+    "TT_PreviewVideo": "TT Preview Video",
     "TT_ModelInfo": "TT Model Info",
     "TT_UnloadModel": "TT Kill Server",
 }

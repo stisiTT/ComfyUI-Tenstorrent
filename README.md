@@ -114,6 +114,7 @@ backstops a kill of any tt-metal server the node left running.
 | **TT Text To Video** (`TT_TextToVideo`) | Tenstorrent/video | One-shot Wan 2.2 text-to-video; returns image frames. |
 | **TT LTX Video (AV)** (`TT_LTXVideo`) | Tenstorrent/video | One-shot LTX-2.3 text-to-audio+video; returns a native `VIDEO` (muxed h264 + AAC) for `Save Video`. Clip geometry and step count are fixed by the running server. The negative input is accepted but ignored — the distilled pipeline has no CFG. |
 | **TT LTX Video Pro (AV)** (`TT_LTXVideoPro`) | Tenstorrent/video | Guided one-stage LTX-2.3. Same `VIDEO` output, but takes `steps`, `video_cfg` / `audio_cfg`, `video_stg` / `audio_stg`, `stg_block`, and a **live** negative prompt. Several times slower than the distilled node. Needs `model_type=ltx_pro`. |
+| **TT Preview Video** (`TT_PreviewVideo`) | Tenstorrent/video | Show a `VIDEO` in the graph without writing to `output/`. The video counterpart of `Preview Image`: writes to ComfyUI's temp directory and renders a player. Never re-encodes. Works with any `VIDEO`, not just the TT nodes. |
 | **TT Model Info** (`TT_ModelInfo`) | Tenstorrent/utils | Display information about a TT model handle. |
 | **TT Unload Model** (`TT_UnloadModel`) | Tenstorrent/utils | Stop the tt-metal server; optionally reset all Tenstorrent boards. |
 
@@ -135,9 +136,13 @@ backstops a kill of any tt-metal server the node left running.
 ### Example: LTX-2.3 text-to-audio+video
 
 ```
-[TT Checkpoint Loader (ltx)] ─model─▶ [TT LTX Video (AV)] ─video─▶ [Save Video]
-            └ clip ─▶ [CLIP Text Encode] ×2 ─▶ TT LTX Video (positive/negative)
+[TT Checkpoint Loader (ltx)] ─model─▶ [TT LTX Video (AV)] ─video─▶ [TT Preview Video]
+            └ clip ─▶ [CLIP Text Encode] ×2 ─▶ TT LTX Video      └─────▶ [Save Video]
 ```
+
+`TT Preview Video` shows the clip in the graph without writing to `output/`;
+`Save Video` is the keeper. The shipped workflow has the preview active and
+`Save Video` muted.
 
 Unlike the Wan graph there is no separate decode step: LTX-2.3 decodes video and
 audio together and muxes them server-side, so the node hands `Save Video` a
@@ -199,6 +204,19 @@ negative prompt to push against. The input exists for graph compatibility.
 **Cancelling an LTX generation** — the node aborts at its next progress event,
 so the graph stops promptly, but the server finishes the generation already in
 flight. The next queued request waits for it.
+
+**Previews disappear after a restart** — expected. `TT Preview Video` writes to
+ComfyUI's temp directory, which is cleared on startup. Unmute `Save Video` for
+anything you want to keep, or download it from the player.
+
+**Why not VHS Video Combine?** It is an encoder: its only video input is
+`images` (an `IMAGE` frame batch) which it feeds to ffmpeg, so it cannot accept
+an already-encoded clip. Bridging with `Get Video Components` works, but it
+decodes the MP4 to ~1.7GB of float32 frames and then re-encodes them. The TT
+path avoids that end to end -- the server encodes once and the bytes are passed
+through untouched, so `TT Preview Video` writes them verbatim and `Save Video`
+only remuxes (packet copy) to attach metadata. Keep `format` and `codec` on
+`auto` in `Save Video`: forcing a mismatched pair makes it decode and re-encode.
 
 ## License
 
