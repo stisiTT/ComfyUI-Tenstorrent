@@ -104,7 +104,7 @@ backstops a kill of any tt-metal server the node left running.
 
 | Node | Category | Purpose |
 |------|----------|---------|
-| **TT Checkpoint Loader** (`TT_CheckpointLoader`) | Tenstorrent | Stand up a tt-metal model (auto-launch server) and return `MODEL` / `CLIP` / `VAE` handles. Inputs: `model_type` (`sdxl`, `wan22` or `ltx`); optional `board` override and `server_url` (connect to an already-running server instead of auto-standup). |
+| **TT Checkpoint Loader** (`TT_CheckpointLoader`) | Tenstorrent | Stand up a tt-metal model (auto-launch server) and return `MODEL` / `CLIP` / `VAE` handles. Inputs: `model_type` (`sdxl`, `wan22`, `ltx` or `ltx_pro`); optional `board` override and `server_url` (connect to an already-running server instead of auto-standup). |
 | **TT LoRA Loader** (`TT_LoraLoader`) | Tenstorrent | Attach a LoRA with separate UNet (`strength_model`) and CLIP (`strength_clip`) scales. Returns `MODEL` / `CLIP`. |
 | **TT Wan LoRA Loader** (`TT_WanLoraLoader`) | Tenstorrent/video | Attach per-expert Wan 2.2 LoRA paths (high/low) applied server-side. Returns `MODEL`. |
 | **TT KSampler** (`TT_KSampler`) | Tenstorrent/sampling | Run SDXL denoising on the server; returns `LATENT`. |
@@ -113,6 +113,7 @@ backstops a kill of any tt-metal server the node left running.
 | **TT Wan Sampler** (`TT_WanSampler`) | Tenstorrent/video | Run Wan 2.2 denoising; returns a video `LATENT` for `TT_VAEDecode`. |
 | **TT Text To Video** (`TT_TextToVideo`) | Tenstorrent/video | One-shot Wan 2.2 text-to-video; returns image frames. |
 | **TT LTX Video (AV)** (`TT_LTXVideo`) | Tenstorrent/video | One-shot LTX-2.3 text-to-audio+video; returns a native `VIDEO` (muxed h264 + AAC) for `Save Video`. Clip geometry and step count are fixed by the running server. The negative input is accepted but ignored — the distilled pipeline has no CFG. |
+| **TT LTX Video Pro (AV)** (`TT_LTXVideoPro`) | Tenstorrent/video | Guided one-stage LTX-2.3. Same `VIDEO` output, but takes `steps`, `video_cfg` / `audio_cfg`, `video_stg` / `audio_stg`, `stg_block`, and a **live** negative prompt. Several times slower than the distilled node. Needs `model_type=ltx_pro`. |
 | **TT Model Info** (`TT_ModelInfo`) | Tenstorrent/utils | Display information about a TT model handle. |
 | **TT Unload Model** (`TT_UnloadModel`) | Tenstorrent/utils | Stop the tt-metal server; optionally reset all Tenstorrent boards. |
 
@@ -145,6 +146,26 @@ finished clip. The `vae` output of the loader is unused here.
 Everything runs on device, text encoding included — LTX's text encoder is
 Gemma-3-12B, which is why the prompt travels to the server as a string rather
 than as embeddings computed on the host.
+
+### distilled vs Pro
+
+They are two different checkpoints, so they are two different `model_type`s and
+switching between them relaunches the server.
+
+| | `ltx` (distilled) | `ltx_pro` (one-stage) |
+|---|---|---|
+| Node | `TT_LTXVideo` | `TT_LTXVideoPro` |
+| Checkpoint | `ltx-2.3-22b-distilled-1.1` | `ltx-2.3-22b-dev` |
+| Steps | 11, fixed in the sigma schedules | `steps` widget, 30 by default |
+| Guidance | none | CFG + STG, all exposed |
+| Negative prompt | inert | live |
+| 241f @ 576x1024 | ~38 s | ~254 s |
+
+`load_tt_ltx_standalone.json` in `user/default/workflows/` has both branches plus
+a muted `TT Kill Server`. The Pro branch ships muted (mode 4, the same convention
+the SDXL workflows use for `TT_UnloadModel`) so a plain Queue runs only the fast
+path — unmute Pro and mute distilled to switch, and expect a server relaunch when
+you do.
 
 ## Troubleshooting
 
