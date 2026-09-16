@@ -14,6 +14,7 @@ Architecture (all-custom nodes, server owns the denoise loop):
     TT_VAEEncode        -> LATENT      (/vae/encode)
 """
 
+import io
 import logging
 import os
 import sys
@@ -194,7 +195,7 @@ class TT_CheckpointLoader:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "model_type": (["sdxl", "wan22"], {
+                "model_type": (["sdxl", "wan22", "ltx"], {
                     "default": "sdxl",
                     "tooltip": "Model to stand up. sdxl -> image graph; wan22 -> video graph (TT_WanSampler or TT_TextToVideo)"
                 }),
@@ -784,6 +785,109 @@ class TT_TextToVideo:
         frames = model.client.generate_video(**video_params)
         logger.info(f"TT_TextToVideo: received frames {tuple(frames.shape)}")
         return (frames,)
+
+
+# LTX-2.3 stage names emitted by the pipeline, mapped to UI phase text.
+_LTX_SECTION_LABELS = {
+    "encoder": "Encoding prompt",
+    "image_encode": "Encoding conditioning image",
+    "denoising_s1": "Denoising (stage 1, half-res)",
+    "latent_upsample": "Upsampling latents",
+    "denoising_s2": "Denoising (stage 2, full-res)",
+    "vae": "Decoding video",
+    "audio_decode": "Decoding audio",
+}
+
+# 8 stage-1 + 3 stage-2 steps, fixed by the distilled sigma schedules.
+_LTX_TOTAL_STEPS = 11
+
+
+class TT_LTXVideo:
+    """
+    Generate a synchronized audio+video clip from text on the tt-metal server (ltx).
+
+    Monolithic one-call path: Gemma-3-12B text encode, two-stage denoise, latent
+    upsample, video VAE decode and audio decode all run on device in a single
+    ``/video/av_generations`` request. Outputs a native VIDEO (muxed h264 + AAC),
+    so it feeds straight into Save Video.
+
+    Geometry is fixed when the server builds its pipeline (the latent upsampler
+    pins its GroupNorm to T*H*W), so there are no width/height/frame widgets --
+    relaunch the server to change the clip shape. Step count is likewise fixed by
+    the distilled sigma schedules.
+
+    The negative prompt input is accepted for graph compatibility but has no
+    effect: the distilled pipeline runs without CFG, so there is no unconditional
+    pass for it to push against.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "model": ("MODEL", {"tooltip": "ltx MODEL from TT_CheckpointLoader"}),
+                "positive": ("CONDITIONING", {"tooltip": "Positive conditioning (from CLIP Text Encode)"}),
+                "negative": (
+                    "CONDITIONING",
+                    {
+                        "tooltip": "Negative conditioning. Accepted but IGNORED: the distilled "
+                        "LTX pipeline runs without CFG, so a negative prompt has no effect."
+                    },
+                ),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "tooltip": "Random seed"}),
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
+        }
+
+    RETURN_TYPES = ("VIDEO",)
+    RETURN_NAMES = ("video",)
+    OUTPUT_TOOLTIPS = ("Muxed audio+video clip (h264 + AAC)",)
+    FUNCTION = "generate"
+    CATEGORY = "Tenstorrent/video"
+    DESCRIPTION = (
+        "Generate a synchronized audio+video clip from text on the tt-metal server (LTX-2.3).\n\n"
+        "Clip geometry is fixed by the running server, not by this node -- relaunch the "
+        "server with different --frames/--height/--width to change it.\n\n"
+        "The negative prompt is ignored: the distilled pipeline runs without CFG."
+    )
+
+    def generate(self, model, positive, negative, seed, unique_id=None) -> Tuple:
+        if not hasattr(model, "client"):
+            raise RuntimeError("TT_LTXVideo requires a Tenstorrent MODEL from TT_CheckpointLoader.")
+        if getattr(model, "model_type", None) != "ltx":
+            raise RuntimeError(
+                f"TT_LTXVideo requires an ltx model (got '{getattr(model, 'model_type', None)}'). "
+                "Select 'ltx' in TT_CheckpointLoader."
+            )
+
+        # Unlike the other samplers, do not silently substitute a placeholder prompt:
+        # a missing one means the graph is miswired and a default would hide that.
+        positive_text = _extract_prompt_text(positive)
+        if not positive_text or not positive_text.strip():
+            raise RuntimeError(
+                "TT_LTXVideo could not read a prompt from the positive conditioning. "
+                "Connect a CLIP Text Encode node fed by the CLIP output of TT_CheckpointLoader."
+            )
+        if _extract_prompt_text(negative):
+            logger.info("TT_LTXVideo: negative prompt ignored (distilled pipeline has no CFG)")
+
+        progress_callback = build_denoise_progress_callback(
+            _LTX_TOTAL_STEPS, unique_id, section_labels=_LTX_SECTION_LABELS
+        )
+
+        logger.info(f"TT_LTXVideo: prompt='{positive_text[:80]}', seed={seed}")
+        video_bytes = model.client.generate_av(
+            progress_callback=progress_callback,
+            prompt=positive_text,
+            seed=int(seed),
+        )
+        logger.info(f"TT_LTXVideo: received {len(video_bytes)} bytes of MP4")
+
+        # VideoFromFile accepts a file-like object, so the clip never touches disk
+        # here and no shared filesystem with the server is assumed.
+        from comfy_api.latest import InputImpl
+
+        return (InputImpl.VideoFromFile(io.BytesIO(video_bytes)),)
 
 
 class TT_ModelInfo:

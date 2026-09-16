@@ -16,7 +16,7 @@ def get_model_config(model_type: str) -> Dict[str, Any]:
     Get model configuration for a given model type.
 
     Args:
-        model_type: One of 'sdxl', 'sd35', 'sd14'
+        model_type: One of 'sdxl', 'sd35', 'sd14', 'wan22', 'ltx'
 
     Returns:
         Configuration dictionary
@@ -61,6 +61,20 @@ def get_model_config(model_type: str) -> Dict[str, Any]:
             "vae_latent_channels": 16,
             "text_encoder_hidden_size": 4096,
             "model_size_gb": 28.0,
+        },
+        # LTX-2.3 is a text->audio+video model handled via a dedicated node. Like
+        # wan22 the CLIP handle is only a prompt courier and the VAE handle is
+        # unused; this entry just lets the wrappers be constructed without raising.
+        # Latents are 128-channel with 32x spatial / 8x temporal compression, and
+        # the text encoder is Gemma-3-12B (3840-wide).
+        "ltx": {
+            "latent_channels": 128,
+            "unet_in_channels": 128,
+            "clip_dim": 3840,
+            "vae_scale_factor": 32,
+            "vae_latent_channels": 128,
+            "text_encoder_hidden_size": 3840,
+            "model_size_gb": 22.0,
         },
     }
 

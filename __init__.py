@@ -15,6 +15,7 @@ from .nodes import (
     TT_VAEEncode,
     TT_WanSampler,
     TT_TextToVideo,
+    TT_LTXVideo,
     TT_ModelInfo,
     TT_UnloadModel,
 )
@@ -28,6 +29,7 @@ NODE_CLASS_MAPPINGS = {
     "TT_VAEEncode": TT_VAEEncode,
     "TT_WanSampler": TT_WanSampler,
     "TT_TextToVideo": TT_TextToVideo,
+    "TT_LTXVideo": TT_LTXVideo,
     "TT_ModelInfo": TT_ModelInfo,
     "TT_UnloadModel": TT_UnloadModel,
 }
@@ -41,6 +43,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "TT_VAEEncode": "TT VAE Encode",
     "TT_WanSampler": "TT Wan Sampler",
     "TT_TextToVideo": "TT Text To Video",
+    "TT_LTXVideo": "TT LTX Video (AV)",
     "TT_ModelInfo": "TT Model Info",
     "TT_UnloadModel": "TT Kill Server",
 }

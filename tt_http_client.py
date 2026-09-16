@@ -183,6 +183,76 @@ class TTHttpClient:
         tensors = [_b64jpeg_to_tensor(b) for b in frames]
         return torch.stack(tensors, dim=0)
 
+    # -- audio-video (ltx, monolithic) -------------------------------------
+
+    def generate_av(
+        self,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        **params,
+    ) -> bytes:
+        """Call ``/video/av_generations`` (ltx). Returns muxed MP4 bytes.
+
+        LTX-2.3 emits synchronized audio, so this returns the encoded clip rather
+        than a frame batch -- the frames contract carries no audio, and the MP4 is
+        orders of magnitude smaller on the wire.
+
+        With ``progress_callback`` the streaming variant is used and each event
+        (``section_start`` / ``section_end`` / ``denoise_step``) is forwarded as it
+        arrives. Falls back to the blocking endpoint if the server lacks the
+        streaming route.
+        """
+        body = {k: v for k, v in params.items() if v is not None}
+        if progress_callback is not None:
+            try:
+                return self._av_stream("/video/av_generations_stream", body, progress_callback)
+            except StagedOpNotAvailable:
+                logger.info(
+                    "Streaming /video/av_generations_stream not available; "
+                    "falling back to blocking /video/av_generations"
+                )
+        data = self._post("/video/av_generations", body, timeout=max(self.timeout, 3600.0))
+        return base64.b64decode(data["video_b64"])
+
+    def _av_stream(
+        self,
+        path: str,
+        body: Dict[str, Any],
+        progress_callback: Callable[[Dict[str, Any]], None],
+    ) -> bytes:
+        """Stream the NDJSON AV endpoint, forwarding progress events.
+
+        Mirrors ``_denoise_stream`` but the terminal event carries a base64 MP4
+        rather than a latent.
+        """
+        url = f"{self.base_url}{path}"
+        timeout = max(self.timeout, 3600.0)
+        with self._lock:
+            resp = self._session.post(url, json=body, timeout=timeout, stream=True)
+            if resp.status_code == 404:
+                raise StagedOpNotAvailable(f"Server endpoint {path} not available (404)")
+            if resp.status_code >= 400:
+                raise RuntimeError(f"Server error {resp.status_code} on {path}: {resp.text[:500]}")
+
+            video: Optional[bytes] = None
+            for line in resp.iter_lines(decode_unicode=True):
+                if not line:
+                    continue
+                event = json.loads(line)
+                etype = event.get("type")
+                if etype == "result":
+                    video = base64.b64decode(event["video_b64"])
+                elif etype == "error":
+                    raise RuntimeError(f"Server error on {path}: {event.get('detail')}")
+                else:
+                    try:
+                        progress_callback(event)
+                    except Exception:
+                        logger.exception("progress_callback raised; continuing stream")
+
+        if video is None:
+            raise RuntimeError("Streaming AV generation ended without a result event")
+        return video
+
     # -- video staged ops (wan22) ------------------------------------------
 
     def denoise_video(

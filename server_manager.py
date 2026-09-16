@@ -38,6 +38,7 @@ logger = logging.getLogger("tenstorrent_nodes.server_manager")
 MODEL_BOARDS = {
     "sdxl": os.getenv("TT_SDXL_BOARD", "p150"),
     "wan22": os.getenv("TT_WAN22_BOARD", "p300x2"),
+    "ltx": os.getenv("TT_LTX_BOARD", "p300x2"),
 }
 
 # Substring expected in the /health "model" label for each model key.
@@ -45,6 +46,7 @@ _MODEL_LABEL_HINTS = {
     "sdxl": "sdxl",
     "wan22": "wan",
     "sd35": "sd3",
+    "ltx": "ltx",
 }
 
 # Default to the tt-metal checkout sitting next to this ComfyUI repo (the
