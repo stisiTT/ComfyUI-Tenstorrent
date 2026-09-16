@@ -76,6 +76,17 @@ def get_model_config(model_type: str) -> Dict[str, Any]:
             "text_encoder_hidden_size": 3840,
             "model_size_gb": 22.0,
         },
+        # LTX-2.3 Pro: same latent geometry and text encoder, different checkpoint
+        # and sampler. Both are served by the same wrappers.
+        "ltx_pro": {
+            "latent_channels": 128,
+            "unet_in_channels": 128,
+            "clip_dim": 3840,
+            "vae_scale_factor": 32,
+            "vae_latent_channels": 128,
+            "text_encoder_hidden_size": 3840,
+            "model_size_gb": 22.0,
+        },
     }
 
     if model_type not in configs:

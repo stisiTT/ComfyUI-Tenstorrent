@@ -211,10 +211,12 @@ class TT_CheckpointLoader:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "model_type": (["sdxl", "wan22", "ltx"], {
+                "model_type": (["sdxl", "wan22", "ltx", "ltx_pro"], {
                     "default": "sdxl",
                     "tooltip": "Model to stand up. sdxl -> image graph; wan22 -> video graph "
-                    "(TT_WanSampler or TT_TextToVideo); ltx -> audio+video graph (TT_LTXVideo)"
+                    "(TT_WanSampler or TT_TextToVideo); ltx -> audio+video graph (TT_LTXVideo); "
+                    "ltx_pro -> guided audio+video graph (TT_LTXVideoPro), slower but takes CFG "
+                    "and a live negative prompt"
                 }),
             },
             "optional": {
@@ -907,6 +909,142 @@ class TT_LTXVideo:
 
         # VideoFromFile accepts a file-like object, so the clip never touches disk
         # here and no shared filesystem with the server is assumed.
+        from comfy_api.latest import InputImpl
+
+        return (InputImpl.VideoFromFile(io.BytesIO(video_bytes)),)
+
+
+# LTX-2.3 Pro runs a single guided denoise pass, so there is no stage split and
+# no latent upsample.
+_LTX_PRO_SECTION_LABELS = {
+    "encoder": "Encoding prompts",
+    "denoising": "Denoising (guided)",
+    "vae": "Decoding video",
+    "audio_decode": "Decoding audio",
+}
+
+
+class TT_LTXVideoPro:
+    """
+    Generate a synchronized audio+video clip from text on the tt-metal server (ltx_pro).
+
+    The guided sibling of TT_LTXVideo. Where the distilled pipeline runs 11 fixed
+    unguided steps, Pro runs one guided pass on the dev 22B checkpoint with
+    classifier-free and spatio-temporal guidance, so step count, the CFG/STG
+    scales and the negative prompt all matter here.
+
+    Expect it to be several times slower -- roughly 254s against 38s for a
+    241-frame 576x1024 clip at the default 30 steps.
+
+    As with TT_LTXVideo, clip geometry is fixed when the server builds its
+    pipeline, so there are no width/height/frame widgets.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "model": ("MODEL", {"tooltip": "ltx_pro MODEL from TT_CheckpointLoader"}),
+                "positive": ("CONDITIONING", {"tooltip": "Positive conditioning (from CLIP Text Encode)"}),
+                "negative": (
+                    "CONDITIONING",
+                    {
+                        "tooltip": "Negative conditioning. Unlike TT_LTXVideo this is live: the "
+                        "one-stage pipeline runs CFG, so it encodes the negative prompt and "
+                        "pushes against it. Leave the text empty to use the pipeline's own "
+                        "default negative prompt."
+                    },
+                ),
+                "steps": (
+                    "INT",
+                    {"default": 30, "min": 1, "max": 200, "tooltip": "Guided denoise steps. 30 is the reference value."},
+                ),
+                "video_cfg": (
+                    "FLOAT",
+                    {"default": 3.0, "min": 0.0, "max": 30.0, "step": 0.1,
+                     "tooltip": "Classifier-free guidance scale for video"},
+                ),
+                "audio_cfg": (
+                    "FLOAT",
+                    {"default": 7.0, "min": 0.0, "max": 30.0, "step": 0.1,
+                     "tooltip": "Classifier-free guidance scale for audio"},
+                ),
+                "video_stg": (
+                    "FLOAT",
+                    {"default": 1.0, "min": 0.0, "max": 30.0, "step": 0.1,
+                     "tooltip": "Spatio-temporal guidance scale for video"},
+                ),
+                "audio_stg": (
+                    "FLOAT",
+                    {"default": 1.0, "min": 0.0, "max": 30.0, "step": 0.1,
+                     "tooltip": "Spatio-temporal guidance scale for audio"},
+                ),
+                "stg_block": (
+                    "INT",
+                    {"default": 28, "min": 0, "max": 47,
+                     "tooltip": "Transformer block STG perturbs (0-47; 28 is the reference value)"},
+                ),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "tooltip": "Random seed"}),
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
+        }
+
+    RETURN_TYPES = ("VIDEO",)
+    RETURN_NAMES = ("video",)
+    OUTPUT_TOOLTIPS = ("Muxed audio+video clip (h264 + AAC)",)
+    FUNCTION = "generate"
+    CATEGORY = "Tenstorrent/video"
+    DESCRIPTION = (
+        "Generate a synchronized audio+video clip from text on the tt-metal server "
+        "(LTX-2.3 Pro, guided one-stage).\n\n"
+        "Slower than TT_LTXVideo but takes guidance and a live negative prompt.\n\n"
+        "Clip geometry is fixed by the running server, not by this node."
+    )
+
+    def generate(
+        self, model, positive, negative, steps, video_cfg, audio_cfg,
+        video_stg, audio_stg, stg_block, seed, unique_id=None,
+    ) -> Tuple:
+        if not hasattr(model, "client"):
+            raise RuntimeError("TT_LTXVideoPro requires a Tenstorrent MODEL from TT_CheckpointLoader.")
+        if getattr(model, "model_type", None) != "ltx_pro":
+            raise RuntimeError(
+                f"TT_LTXVideoPro requires an ltx_pro model (got '{getattr(model, 'model_type', None)}'). "
+                "Select 'ltx_pro' in TT_CheckpointLoader."
+            )
+
+        positive_text = _extract_prompt_text(positive)
+        if not positive_text or not positive_text.strip():
+            raise RuntimeError(
+                "TT_LTXVideoPro could not read a prompt from the positive conditioning. "
+                "Connect a CLIP Text Encode node fed by the CLIP output of TT_CheckpointLoader."
+            )
+        # An empty negative is sent as "" so the server substitutes the pipeline's
+        # own default constant rather than encoding empty text.
+        negative_text = _extract_prompt_text(negative) or ""
+
+        progress_callback = build_denoise_progress_callback(
+            int(steps), unique_id, section_labels=_LTX_PRO_SECTION_LABELS
+        )
+
+        logger.info(
+            f"TT_LTXVideoPro: prompt='{positive_text[:80]}', steps={steps}, "
+            f"cfg={video_cfg}/{audio_cfg}, stg={video_stg}/{audio_stg}@{stg_block}, seed={seed}"
+        )
+        video_bytes = model.client.generate_av(
+            progress_callback=progress_callback,
+            prompt=positive_text,
+            negative_prompt=negative_text,
+            seed=int(seed),
+            num_inference_steps=int(steps),
+            video_cfg_scale=float(video_cfg),
+            audio_cfg_scale=float(audio_cfg),
+            video_stg_scale=float(video_stg),
+            audio_stg_scale=float(audio_stg),
+            stg_block=int(stg_block),
+        )
+        logger.info(f"TT_LTXVideoPro: received {len(video_bytes)} bytes of MP4")
+
         from comfy_api.latest import InputImpl
 
         return (InputImpl.VideoFromFile(io.BytesIO(video_bytes)),)

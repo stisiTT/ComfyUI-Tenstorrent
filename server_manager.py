@@ -39,14 +39,20 @@ MODEL_BOARDS = {
     "sdxl": os.getenv("TT_SDXL_BOARD", "p150"),
     "wan22": os.getenv("TT_WAN22_BOARD", "p300x2"),
     "ltx": os.getenv("TT_LTX_BOARD", "p300x2"),
+    "ltx_pro": os.getenv("TT_LTX_PRO_BOARD", "p300x2"),
 }
 
-# Substring expected in the /health "model" label for each model key.
+# Substrings expected in the /health "model" label for each model key. A token
+# prefixed with "!" must be absent, which is what separates the two LTX servers:
+# their labels are "LTX-2.3 AV" and "LTX-2.3 Pro AV", so a bare "ltx" hint would
+# let a distilled request adopt a running Pro server and silently sample with the
+# wrong weights.
 _MODEL_LABEL_HINTS = {
     "sdxl": "sdxl",
     "wan22": "wan",
     "sd35": "sd3",
-    "ltx": "ltx",
+    "ltx": ("ltx", "!pro"),
+    "ltx_pro": ("ltx", "pro"),
 }
 
 # Default to the tt-metal checkout sitting next to this ComfyUI repo (the
@@ -164,7 +170,14 @@ class _ServerManager:
             return False
         label = str(health.get("model", "")).lower()
         hint = _MODEL_LABEL_HINTS.get(model, model)
-        return hint in label
+        tokens = (hint,) if isinstance(hint, str) else hint
+        for token in tokens:
+            if token.startswith("!"):
+                if token[1:] in label:
+                    return False
+            elif token not in label:
+                return False
+        return True
 
     def _log_path(self, model: str) -> str:
         return os.path.join(TT_METAL_DIR, f"{model}_server_comfy.log")
