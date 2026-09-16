@@ -213,7 +213,8 @@ class TT_CheckpointLoader:
             "required": {
                 "model_type": (["sdxl", "wan22", "ltx"], {
                     "default": "sdxl",
-                    "tooltip": "Model to stand up. sdxl -> image graph; wan22 -> video graph (TT_WanSampler or TT_TextToVideo)"
+                    "tooltip": "Model to stand up. sdxl -> image graph; wan22 -> video graph "
+                    "(TT_WanSampler or TT_TextToVideo); ltx -> audio+video graph (TT_LTXVideo)"
                 }),
             },
             "optional": {
