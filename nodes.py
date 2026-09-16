@@ -138,13 +138,21 @@ def _attach_wan_lora_params(params: dict, model) -> None:
     params["lora_scale"] = scale
 
 
-def build_denoise_progress_callback(num_steps, unique_id, section_labels=None):
+def build_denoise_progress_callback(num_steps, unique_id, section_labels=None, section_step_offsets=None):
     """Build a progress callback that drives a native ComfyUI ProgressBar.
 
-    Shared by TT_KSampler (SDXL) and TT_WanSampler (wan22). Returns None if the
-    progress plumbing is unavailable, in which case the client falls back to a
-    non-streaming request. ``section_labels`` maps server ``section_start`` event
-    names to human-readable phase text (SDXL emits no section events).
+    Shared by TT_KSampler (SDXL), TT_WanSampler (wan22) and TT_LTXVideo. Returns
+    None if the progress plumbing is unavailable, in which case the client falls
+    back to a non-streaming request. ``section_labels`` maps server
+    ``section_start`` event names to human-readable phase text (SDXL emits no
+    section events).
+
+    ``section_step_offsets`` supports multi-stage pipelines, whose step counter
+    restarts at 1 in each stage. It maps a section name to the number of steps
+    already completed when that section begins; while such a section is active,
+    steps are reported against ``num_steps`` as a single axis instead of the
+    per-stage total the event carries. Without it the bar would fill, then jump
+    backwards at the stage boundary.
     """
     try:
         import comfy.utils
@@ -158,20 +166,28 @@ def build_denoise_progress_callback(num_steps, unique_id, section_labels=None):
         PromptServer = None
 
     section_labels = section_labels or {}
+    section_step_offsets = section_step_offsets or {}
     pbar = comfy.utils.ProgressBar(max(int(num_steps), 1), node_id=unique_id)
+    state = {"offset": None}
 
     def on_progress(event):
         etype = event.get("type")
         if etype == "denoise_step":
-            total = int(event.get("total") or num_steps)
             step = int(event.get("step") or 0)
-            pbar.update_absolute(step, total)
-        elif etype == "section_start" and unique_id is not None and PromptServer is not None:
-            label = section_labels.get(event.get("name"), event.get("name") or "")
-            try:
-                PromptServer.instance.send_progress_text(label, unique_id)
-            except Exception:
-                pass
+            if state["offset"] is not None:
+                pbar.update_absolute(state["offset"] + step, max(int(num_steps), 1))
+            else:
+                pbar.update_absolute(step, int(event.get("total") or num_steps))
+        elif etype == "section_start":
+            name = event.get("name")
+            if name in section_step_offsets:
+                state["offset"] = int(section_step_offsets[name])
+            if unique_id is not None and PromptServer is not None:
+                label = section_labels.get(name, name or "")
+                try:
+                    PromptServer.instance.send_progress_text(label, unique_id)
+                except Exception:
+                    pass
 
     return on_progress
 
@@ -798,8 +814,10 @@ _LTX_SECTION_LABELS = {
     "audio_decode": "Decoding audio",
 }
 
-# 8 stage-1 + 3 stage-2 steps, fixed by the distilled sigma schedules.
+# 8 stage-1 + 3 stage-2 steps, fixed by the distilled sigma schedules. The server
+# reports each stage's steps from 1, so stage 2 is offset past stage 1's 8.
 _LTX_TOTAL_STEPS = 11
+_LTX_STEP_OFFSETS = {"denoising_s1": 0, "denoising_s2": 8}
 
 
 class TT_LTXVideo:
@@ -872,7 +890,10 @@ class TT_LTXVideo:
             logger.info("TT_LTXVideo: negative prompt ignored (distilled pipeline has no CFG)")
 
         progress_callback = build_denoise_progress_callback(
-            _LTX_TOTAL_STEPS, unique_id, section_labels=_LTX_SECTION_LABELS
+            _LTX_TOTAL_STEPS,
+            unique_id,
+            section_labels=_LTX_SECTION_LABELS,
+            section_step_offsets=_LTX_STEP_OFFSETS,
         )
 
         logger.info(f"TT_LTXVideo: prompt='{positive_text[:80]}', seed={seed}")
