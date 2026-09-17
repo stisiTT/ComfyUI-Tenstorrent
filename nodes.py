@@ -131,6 +131,41 @@ def _extract_prompt_text(conditioning) -> Optional[str]:
     return None
 
 
+def _ensure_own_server(model, node_name: str) -> None:
+    """Make sure the shared server is running this model's weights.
+
+    TT_CheckpointLoader is not a pure function -- standing up a model switches a
+    single shared server -- but ComfyUI executes each node once per prompt and
+    shares its output with every consumer. So in a graph containing two model
+    types, whichever branch runs second switches the server, and the first
+    branch's already-created MODEL handle then points at a server running
+    different weights. The handle still says the right model_type, so the
+    sampler's own guard passes and the request is quietly served by the wrong
+    model.
+
+    Re-ensuring here closes that. When the server is already correct this is a
+    health probe; when it is not, it switches back (a board reset plus a model
+    load) and logs that it did, since the cost is otherwise unexplained.
+    """
+    model_type = getattr(model, "model_type", None)
+    if not model_type:
+        return
+    try:
+        label_before = server_manager.current_model_label()
+        server_manager.ensure_server(model_type)
+        label_after = server_manager.current_model_label()
+        if label_before and label_after and label_before != label_after:
+            logger.warning(
+                f"{node_name}: the server was running '{label_before}' but this node needs "
+                f"'{model_type}'; switched to '{label_after}'. Two model types in one graph "
+                "cost a server switch per alternation -- run them in separate queues to avoid it."
+            )
+    except Exception as e:
+        raise RuntimeError(
+            f"{node_name}: could not ensure a '{model_type}' server is running: {e}"
+        ) from e
+
+
 def _attach_ltx_lora_params(params: dict, model) -> None:
     """Copy the LTX LoRA stack (attached by TT_LTXLoraLoader) onto a request dict.
 
@@ -285,12 +320,21 @@ class TT_CheckpointLoader:
         (so we never trigger a spurious multi-minute relaunch), and changes when
         the server is unloaded (generation bumps) or has died (health probe). On
         any error we return NaN to force a re-run, which is the safe default.
+
+        The live server's model label is part of the token. A graph with two
+        model types executes its branches in whatever order the scheduler picks,
+        and one branch's loader switching the server would otherwise leave the
+        other branch's loader cached, holding a handle that points at a server
+        now running different weights -- the request then gets served by the
+        wrong model rather than failing. Including the label invalidates the
+        stale loader so it re-runs and switches the server back.
         """
         try:
             url = (server_url or "").strip() or None
             gen = server_manager.get_generation()
             healthy = server_manager.health_ok(url)  # url=None -> managed server
-            return f"{model_type}|{(board or '').strip()}|{url or ''}|{gen}|{int(healthy)}"
+            label = server_manager.current_model_label(url)
+            return f"{model_type}|{(board or '').strip()}|{url or ''}|{gen}|{int(healthy)}|{label}"
         except Exception:
             return float("nan")
 
@@ -1010,6 +1054,8 @@ class TT_LTXVideo:
             section_step_offsets=_LTX_STEP_OFFSETS,
         )
 
+        _ensure_own_server(model, "TT_LTXVideo")
+
         logger.info(f"TT_LTXVideo: prompt='{positive_text[:80]}', seed={seed}")
         av_params = {"prompt": positive_text, "seed": int(seed)}
         _attach_ltx_lora_params(av_params, model)
@@ -1140,6 +1186,8 @@ class TT_LTXVideoPro:
             f"TT_LTXVideoPro: prompt='{positive_text[:80]}', steps={steps}, "
             f"cfg={video_cfg}/{audio_cfg}, stg={video_stg}/{audio_stg}@{stg_block}, seed={seed}"
         )
+        _ensure_own_server(model, "TT_LTXVideoPro")
+
         av_params = {
             "prompt": positive_text,
             "negative_prompt": negative_text,

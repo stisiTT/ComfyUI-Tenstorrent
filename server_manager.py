@@ -165,6 +165,27 @@ class _ServerManager:
             return None
         return None
 
+    def current_model_label(self, base_url: Optional[str] = None) -> str:
+        """The live server's ``/health`` model label, or "" if unreachable.
+
+        Used in the loader's cache token so that a server switched out from
+        under a cached loader invalidates it. Without this, two model types in
+        one graph can leave a stale MODEL handle pointing at a server now
+        running different weights, and the request is served by the wrong model
+        instead of failing.
+        """
+        health = None
+        try:
+            if base_url:
+                resp = requests.get(f"{base_url.rstrip('/')}/health", timeout=5.0)
+                if resp.status_code == 200:
+                    health = resp.json()
+            else:
+                health = self._health()
+        except Exception:
+            health = None
+        return str((health or {}).get("model", ""))
+
     def _health_matches(self, model: str, health: dict) -> bool:
         if not health or health.get("status") != "healthy":
             return False
@@ -868,6 +889,10 @@ def ensure_server(model: str, board: Optional[str] = None,
 
 def get_generation() -> int:
     return _manager.get_generation()
+
+
+def current_model_label(base_url: Optional[str] = None) -> str:
+    return _manager.current_model_label(base_url)
 
 
 def health_ok(base_url: Optional[str] = None) -> bool:
