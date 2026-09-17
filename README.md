@@ -171,6 +171,34 @@ together with Lightricks' official distillation adapter at 1.0, sampled at
 **8 steps with CFG 1** (set `steps`, `video_cfg` and `audio_cfg` on
 `TT LTX Video Pro`).
 
+### The two Pro guidance profiles
+
+`TT LTX Video Pro` has five guidance knobs and **their neutral values differ**, which
+is the easy mistake. Every term left enabled costs an extra transformer forward per
+step, so a run meant to be unguided can silently cost 3-4x what it should.
+
+| | reference (no LoRA) | distilled (with the distillation LoRA) |
+|---|---|---|
+| `steps` | 30 | 8 |
+| `video_cfg` / `audio_cfg` | 3.0 / 7.0 | 1.0 / 1.0 |
+| `video_stg` / `audio_stg` | 1.0 / 1.0 | **0.0 / 0.0** |
+| `video_modality` / `audio_modality` | 3.0 / 3.0 | **1.0 / 1.0** |
+| `rescale` | 0.7 | **0.0** |
+| forwards per step | 4 | 1 |
+
+`cfg` and `modality` disable at **1.0**; `stg` and `rescale` disable at **0**. Setting
+them all to 0 does not turn guidance off -- it enables modality guidance at -1. The node
+logs how many forwards per step your settings imply, so check that line if a run is
+slower than you expected.
+
+### Trigger words are not free variables
+
+Most style adapters need a trigger token in the prompt. Some triggers carry meaning of
+their own -- `crtanim` reads as "CRT animation", so the base model responds to it even
+with no adapter loaded. If you are comparing with-adapter against without-adapter, put
+the trigger **only** in the with-adapter prompt, or the comparison is confounded.
+Adapters with a deliberately meaningless trigger (for example `P1x4r`) avoid the problem.
+
 Three things the node cannot enforce for you:
 
 - **Exactly one distillation adapter.** Two double-apply and overshoot.
