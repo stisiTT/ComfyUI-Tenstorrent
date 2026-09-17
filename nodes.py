@@ -1093,6 +1093,19 @@ class TT_LTXVideoPro:
 
     As with TT_LTXVideo, clip geometry is fixed when the server builds its
     pipeline, so there are no width/height/frame widgets.
+
+    Two guidance profiles matter, and mixing them is the easy mistake:
+
+      * reference (no LoRA): steps 30, cfg 3.0/7.0, stg 1.0/1.0,
+        modality 3.0/3.0, rescale 0.7. Four transformer forwards per step.
+      * distilled (with the official distillation LoRA at 1.0): steps 8,
+        cfg 1.0/1.0, stg 0.0/0.0, modality 1.0/1.0, rescale 0. One forward
+        per step.
+
+    Note the neutral values differ per knob -- cfg and modality disable at 1.0,
+    stg and rescale at 0. Leaving any of them on triples the cost of a
+    distilled-profile run and applies guidance the adapter was not calibrated
+    for.
     """
 
     @classmethod
@@ -1134,6 +1147,21 @@ class TT_LTXVideoPro:
                     {"default": 1.0, "min": 0.0, "max": 30.0, "step": 0.1,
                      "tooltip": "Spatio-temporal guidance scale for audio"},
                 ),
+                "video_modality": (
+                    "FLOAT",
+                    {"default": 3.0, "min": 0.0, "max": 30.0, "step": 0.1,
+                     "tooltip": "Cross-modal guidance for video. 1.0 DISABLES it (not 0)."},
+                ),
+                "audio_modality": (
+                    "FLOAT",
+                    {"default": 3.0, "min": 0.0, "max": 30.0, "step": 0.1,
+                     "tooltip": "Cross-modal guidance for audio. 1.0 DISABLES it (not 0)."},
+                ),
+                "rescale": (
+                    "FLOAT",
+                    {"default": 0.7, "min": 0.0, "max": 1.0, "step": 0.05,
+                     "tooltip": "CFG rescale. 0 disables it. Pointless without CFG."},
+                ),
                 "stg_block": (
                     "INT",
                     {"default": 28, "min": 0, "max": 47,
@@ -1158,7 +1186,8 @@ class TT_LTXVideoPro:
 
     def generate(
         self, model, positive, negative, steps, video_cfg, audio_cfg,
-        video_stg, audio_stg, stg_block, seed, unique_id=None,
+        video_stg, audio_stg, video_modality, audio_modality, rescale,
+        stg_block, seed, unique_id=None,
     ) -> Tuple:
         if not hasattr(model, "client"):
             raise RuntimeError("TT_LTXVideoPro requires a Tenstorrent MODEL from TT_CheckpointLoader.")
@@ -1182,9 +1211,16 @@ class TT_LTXVideoPro:
             int(steps), unique_id, section_labels=_LTX_PRO_SECTION_LABELS
         )
 
+        # Each guidance term left enabled costs an extra transformer forward per
+        # step, so log how many the settings actually imply -- otherwise an
+        # unintentionally guided run just looks mysteriously slow.
+        forwards = 1 + int(video_cfg > 1.0 or audio_cfg > 1.0) + int(video_stg != 0.0 or audio_stg != 0.0)
+        forwards += int(video_modality != 1.0 or audio_modality != 1.0)
         logger.info(
             f"TT_LTXVideoPro: prompt='{positive_text[:80]}', steps={steps}, "
-            f"cfg={video_cfg}/{audio_cfg}, stg={video_stg}/{audio_stg}@{stg_block}, seed={seed}"
+            f"cfg={video_cfg}/{audio_cfg}, stg={video_stg}/{audio_stg}@{stg_block}, "
+            f"modality={video_modality}/{audio_modality}, rescale={rescale}, "
+            f"seed={seed} -> {forwards} transformer forward(s)/step"
         )
         _ensure_own_server(model, "TT_LTXVideoPro")
 
@@ -1197,6 +1233,9 @@ class TT_LTXVideoPro:
             "audio_cfg_scale": float(audio_cfg),
             "video_stg_scale": float(video_stg),
             "audio_stg_scale": float(audio_stg),
+            "video_modality_scale": float(video_modality),
+            "audio_modality_scale": float(audio_modality),
+            "rescale_scale": float(rescale),
             "stg_block": int(stg_block),
         }
         _attach_ltx_lora_params(av_params, model)
