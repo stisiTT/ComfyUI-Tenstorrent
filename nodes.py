@@ -57,10 +57,15 @@ def _lora_choices(prefix: Optional[str] = None) -> list:
     """Return LoRA dropdown options from ComfyUI's ``models/loras`` folder.
 
     The first entry is always ``LORA_NONE`` (no adapter). When ``prefix`` is given
-    (e.g. ``"sdxl"`` or ``"wan22"``), only adapters under that subfolder are shown,
-    falling back to the full list if the prefix matches nothing. Wrapped so a
-    missing folder never raises from ``INPUT_TYPES`` (which would drop the node
-    from ``/object_info`` and break it in the UI).
+    (e.g. ``"sdxl"``, ``"wan22"`` or ``"ltx"``), only adapters under that subfolder
+    are shown. Wrapped so a missing folder never raises from ``INPUT_TYPES`` (which
+    would drop the node from ``/object_info`` and break it in the UI).
+
+    If the prefix folder does not exist at all, fall back to listing everything --
+    that covers a setup keeping adapters at the top level. But an existing yet
+    empty folder means "no adapters for this model yet", and is reported as such:
+    offering another model's adapters there would list files that cannot bind, and
+    the failure only surfaces server-side as a key-mapping error.
     """
     try:
         names = folder_paths.get_filename_list("loras") if folder_paths is not None else []
@@ -68,8 +73,19 @@ def _lora_choices(prefix: Optional[str] = None) -> list:
         names = []
     if prefix:
         filtered = [n for n in names if n.replace("\\", "/").startswith(f"{prefix}/")]
-        names = filtered or names
+        names = filtered if (filtered or _lora_prefix_exists(prefix)) else names
     return [LORA_NONE] + list(names)
+
+
+def _lora_prefix_exists(prefix: str) -> bool:
+    """True if ``models/loras/<prefix>/`` exists under any configured loras root."""
+    if folder_paths is None:
+        return False
+    try:
+        roots = folder_paths.get_folder_paths("loras")
+    except Exception:
+        return False
+    return any(os.path.isdir(os.path.join(root, prefix)) for root in roots)
 
 
 def _resolve_lora_path(name: Optional[str]) -> Optional[str]:
@@ -113,6 +129,23 @@ def _extract_prompt_text(conditioning) -> Optional[str]:
             if isinstance(metadata, dict):
                 return metadata.get("prompt")
     return None
+
+
+def _attach_ltx_lora_params(params: dict, model) -> None:
+    """Copy the LTX LoRA stack (attached by TT_LTXLoraLoader) onto a request dict.
+
+    The handle carries an ``adapters`` list rather than a single path, because
+    several adapters can be active at once and the server sums their deltas.
+    Entries at strength 0 are dropped here so the server sees an empty stack and
+    restores the base weights, rather than binding a no-op delta.
+    """
+    lora = getattr(model, "lora", None)
+    if not lora:
+        return
+    adapters = [a for a in (lora.get("adapters") or []) if a.get("path") and a.get("scale")]
+    if not adapters:
+        return
+    params["lora_adapters"] = adapters
 
 
 def _attach_wan_lora_params(params: dict, model) -> None:
@@ -361,6 +394,83 @@ class TT_LoraLoader:
             "lora_scale_unet": strength_model,
             "lora_scale_clip": strength_clip,
         }), clip)
+
+
+class TT_LTXLoraLoader:
+    """
+    Attach a LoRA adapter to a Tenstorrent LTX MODEL handle.
+
+    Chainable, like ComfyUI's native LoraLoader: each node appends one adapter,
+    so wiring several in series stacks them and the server sums their deltas on
+    device. That combination is the point -- LTX-2.3 style adapters are trained
+    against the dev checkpoint, so the documented way to get a custom look at
+    the distilled step count is a style adapter together with the official
+    distillation adapter, which only works on ltx_pro.
+
+    Two things this node cannot enforce, because they are properties of the
+    adapters rather than the graph:
+
+      * use exactly one distillation adapter. Two of them double-apply.
+      * a distillation adapter only shows its effect at the settings it was
+        calibrated for -- 8 steps and CFG 1 on TT_LTXVideoPro.
+
+    Adapters live in ComfyUI/models/loras/ltx/ and must be built for LTX-2.3;
+    an SDXL or Wan adapter has no key that maps onto an LTX module and the
+    server will report it as skipped.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "model": ("MODEL", {"tooltip": "ltx or ltx_pro MODEL from TT_CheckpointLoader"}),
+                "lora_name": (
+                    _lora_choices("ltx"),
+                    {"tooltip": "LTX adapter from ComfyUI/models/loras/ltx (select None to disable)"},
+                ),
+                "strength": (
+                    "FLOAT",
+                    {
+                        "default": 1.0,
+                        "min": 0.0,
+                        "max": 2.0,
+                        "step": 0.05,
+                        "tooltip": "Adapter strength. Changing it re-binds on device; it does not reload the adapter.",
+                    },
+                ),
+            },
+        }
+
+    RETURN_TYPES = ("MODEL",)
+    RETURN_NAMES = ("model",)
+    OUTPUT_TOOLTIPS = ("Model with the LTX LoRA stack attached",)
+    FUNCTION = "apply_lora"
+    CATEGORY = "Tenstorrent/video"
+    DESCRIPTION = "Attach an LTX-2.3 LoRA, applied server-side. Chain several to stack them."
+
+    def apply_lora(self, model, lora_name: str, strength: float) -> Tuple:
+        if not hasattr(model, "with_lora"):
+            raise RuntimeError("TT_LTXLoraLoader requires a Tenstorrent MODEL from TT_CheckpointLoader.")
+        model_type = getattr(model, "model_type", None)
+        if model_type not in ("ltx", "ltx_pro"):
+            raise RuntimeError(
+                f"TT_LTXLoraLoader requires an ltx or ltx_pro model (got '{model_type}'). "
+                "For SDXL use TT_LoraLoader; for wan22 use TT_WanLoraLoader."
+            )
+        lora_path = _resolve_lora_path(lora_name)
+        if not lora_path:
+            logger.info("TT_LTXLoraLoader: no lora selected, passing model through unchanged")
+            return (model,)
+
+        # Append rather than replace: with_lora() swaps the whole dict, so chaining
+        # only stacks if each node carries the previous node's list forward.
+        existing = (getattr(model, "lora", None) or {}).get("adapters") or []
+        adapters = [*existing, {"path": lora_path, "scale": float(strength)}]
+        logger.info(
+            f"TT_LTXLoraLoader: attaching '{lora_path}' at strength {strength} "
+            f"({len(adapters)} adapter(s) on this model)"
+        )
+        return (model.with_lora({"adapters": adapters}),)
 
 
 class TT_WanLoraLoader:
@@ -901,11 +1011,9 @@ class TT_LTXVideo:
         )
 
         logger.info(f"TT_LTXVideo: prompt='{positive_text[:80]}', seed={seed}")
-        video_bytes = model.client.generate_av(
-            progress_callback=progress_callback,
-            prompt=positive_text,
-            seed=int(seed),
-        )
+        av_params = {"prompt": positive_text, "seed": int(seed)}
+        _attach_ltx_lora_params(av_params, model)
+        video_bytes = model.client.generate_av(progress_callback=progress_callback, **av_params)
         logger.info(f"TT_LTXVideo: received {len(video_bytes)} bytes of MP4")
 
         # VideoFromFile accepts a file-like object, so the clip never touches disk
@@ -1032,18 +1140,19 @@ class TT_LTXVideoPro:
             f"TT_LTXVideoPro: prompt='{positive_text[:80]}', steps={steps}, "
             f"cfg={video_cfg}/{audio_cfg}, stg={video_stg}/{audio_stg}@{stg_block}, seed={seed}"
         )
-        video_bytes = model.client.generate_av(
-            progress_callback=progress_callback,
-            prompt=positive_text,
-            negative_prompt=negative_text,
-            seed=int(seed),
-            num_inference_steps=int(steps),
-            video_cfg_scale=float(video_cfg),
-            audio_cfg_scale=float(audio_cfg),
-            video_stg_scale=float(video_stg),
-            audio_stg_scale=float(audio_stg),
-            stg_block=int(stg_block),
-        )
+        av_params = {
+            "prompt": positive_text,
+            "negative_prompt": negative_text,
+            "seed": int(seed),
+            "num_inference_steps": int(steps),
+            "video_cfg_scale": float(video_cfg),
+            "audio_cfg_scale": float(audio_cfg),
+            "video_stg_scale": float(video_stg),
+            "audio_stg_scale": float(audio_stg),
+            "stg_block": int(stg_block),
+        }
+        _attach_ltx_lora_params(av_params, model)
+        video_bytes = model.client.generate_av(progress_callback=progress_callback, **av_params)
         logger.info(f"TT_LTXVideoPro: received {len(video_bytes)} bytes of MP4")
 
         from comfy_api.latest import InputImpl

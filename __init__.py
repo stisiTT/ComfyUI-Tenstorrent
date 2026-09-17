@@ -9,6 +9,7 @@ LoRA / KSampler / VAE encode / VAE decode) on Tenstorrent accelerators.
 from .nodes import (
     TT_CheckpointLoader,
     TT_LoraLoader,
+    TT_LTXLoraLoader,
     TT_WanLoraLoader,
     TT_KSampler,
     TT_VAEDecode,
@@ -25,6 +26,7 @@ from .nodes import (
 NODE_CLASS_MAPPINGS = {
     "TT_CheckpointLoader": TT_CheckpointLoader,
     "TT_LoraLoader": TT_LoraLoader,
+    "TT_LTXLoraLoader": TT_LTXLoraLoader,
     "TT_WanLoraLoader": TT_WanLoraLoader,
     "TT_KSampler": TT_KSampler,
     "TT_VAEDecode": TT_VAEDecode,
@@ -41,6 +43,7 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "TT_CheckpointLoader": "TT Checkpoint Loader",
     "TT_LoraLoader": "TT LoRA Loader",
+    "TT_LTXLoraLoader": "TT LTX LoRA Loader",
     "TT_WanLoraLoader": "TT Wan LoRA Loader",
     "TT_KSampler": "TT KSampler",
     "TT_VAEDecode": "TT VAE Decode",

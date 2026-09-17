@@ -114,6 +114,7 @@ backstops a kill of any tt-metal server the node left running.
 | **TT Text To Video** (`TT_TextToVideo`) | Tenstorrent/video | One-shot Wan 2.2 text-to-video; returns image frames. |
 | **TT LTX Video (AV)** (`TT_LTXVideo`) | Tenstorrent/video | One-shot LTX-2.3 text-to-audio+video; returns a native `VIDEO` (muxed h264 + AAC) for `Save Video`. Clip geometry and step count are fixed by the running server. The negative input is accepted but ignored — the distilled pipeline has no CFG. |
 | **TT LTX Video Pro (AV)** (`TT_LTXVideoPro`) | Tenstorrent/video | Guided one-stage LTX-2.3. Same `VIDEO` output, but takes `steps`, `video_cfg` / `audio_cfg`, `video_stg` / `audio_stg`, `stg_block`, and a **live** negative prompt. Several times slower than the distilled node. Needs `model_type=ltx_pro`. |
+| **TT LTX LoRA Loader** (`TT_LTXLoraLoader`) | Tenstorrent/video | Attach an LTX-2.3 LoRA, applied on device server-side. **Chainable** — wire several in series to stack them, each with its own strength. Adapters live in `models/loras/ltx/`. |
 | **TT Preview Video** (`TT_PreviewVideo`) | Tenstorrent/video | Show a `VIDEO` in the graph without writing to `output/`. The video counterpart of `Preview Image`: writes to ComfyUI's temp directory and renders a player. Never re-encodes. Works with any `VIDEO`, not just the TT nodes. |
 | **TT Model Info** (`TT_ModelInfo`) | Tenstorrent/utils | Display information about a TT model handle. |
 | **TT Unload Model** (`TT_UnloadModel`) | Tenstorrent/utils | Stop the tt-metal server; optionally reset all Tenstorrent boards. |
@@ -151,6 +152,37 @@ finished clip. The `vae` output of the loader is unused here.
 Everything runs on device, text encoding included — LTX's text encoder is
 Gemma-3-12B, which is why the prompt travels to the server as a string rather
 than as embeddings computed on the host.
+
+### LoRA on LTX
+
+Adapters go in `ComfyUI/models/loras/ltx/` and must be built for LTX-2.3. Chain
+`TT LTX LoRA Loader` nodes to stack them:
+
+```
+[TT Checkpoint Loader (ltx_pro)] ─model─▶ [TT LTX LoRA Loader]  ─▶ [TT LTX LoRA Loader]  ─▶ [TT LTX Video Pro]
+                                              style @ 0.6              distillation @ 1.0
+```
+
+Stacking is the point rather than a nicety. LTX-2.3 style adapters are trained
+against the **dev** checkpoint, so they do not work on the distilled one — and
+`ltx_pro` is the server that runs dev. The documented way to get a custom look
+*and* the distilled step count is a style adapter at its normal strength
+together with Lightricks' official distillation adapter at 1.0, sampled at
+**8 steps with CFG 1** (set `steps`, `video_cfg` and `audio_cfg` on
+`TT LTX Video Pro`).
+
+Three things the node cannot enforce for you:
+
+- **Exactly one distillation adapter.** Two double-apply and overshoot.
+- **A distillation adapter only shows its effect at the settings it was
+  calibrated for.** At 30 steps and CFG 3/7 it will look wrong.
+- **The adapter must be for LTX-2.3.** An SDXL or Wan file has no key that maps
+  onto an LTX module; the server reports it as skipped rather than failing the
+  run, so check the node log if an adapter seems to do nothing.
+
+Changing a strength re-binds on device and does **not** reload the adapter, so
+tweaking and re-queueing is cheap even for the official distillation adapter,
+which is 7.6 GB.
 
 ### distilled vs Pro
 
@@ -204,6 +236,14 @@ negative prompt to push against. The input exists for graph compatibility.
 **Cancelling an LTX generation** — the node aborts at its next progress event,
 so the graph stops promptly, but the server finishes the generation already in
 flight. The next queued request waits for it.
+
+**An LTX LoRA appears to do nothing** — check the server log for
+`could not be loaded` or a skipped adapter. The usual causes are an adapter
+built for a different model, or a distillation adapter run at the wrong step
+count and CFG (it needs 8 steps / CFG 1). Note also that the `ltx` dropdown
+lists only what is in `models/loras/ltx/`; if that folder is missing entirely
+the node falls back to listing every SDXL and Wan adapter, none of which can
+bind here.
 
 **Previews disappear after a restart** — expected. `TT Preview Video` writes to
 ComfyUI's temp directory, which is cleared on startup. Unmute `Save Video` for
