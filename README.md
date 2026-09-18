@@ -251,7 +251,7 @@ The on-device math was verified independently of any of this:
 cross-attention Q and the attention gate, zero targets skipped or deferred, and
 exact parity with the reference loader's `W + strength * B@A`.
 
-### Pro audio: high-band noise, and the two knobs that fix it
+### Pro audio: the high-band noise floor
 
 The Pro profile puts a steady hiss under the whole clip that the distilled profile
 does not. It is guidance, not the checkpoint -- Pro at 8 steps with guidance off is
@@ -259,30 +259,39 @@ the cleanest audio this stack produces.
 
 Measured as the 5-10 kHz noise floor relative to program level (the 10th-percentile
 frame energy in that band, minus the clip's RMS -- more negative is quieter hiss
-under the content), on the 90s-cartoon diner scene, 16 runs:
+under the content), on the 90s-cartoon diner scene, 19 runs:
 
-| setting | audio | video |
-|---|---|---|
-| reference (`audio_cfg` 7, `audio_stg` 1, `rescale` 0.7) | -16.9 dB | baseline |
-| **`audio_cfg` 3, `audio_stg` 0** | **-23.2 dB** | unchanged |
-| `audio_stg` 0 + `rescale` 1.0 | -25.3 dB | **desaturated, ghosting** |
-| both stg 0 + `rescale` 1.0 | -26.1 dB | **washed out, melted faces** |
-| distilled, for scale | -42.3 dB | n/a |
+| setting | `audio_cfg` | rescale (video/audio) | audio | video |
+|---|---|---|---|---|
+| reference | 7 | 0.7 / 0.7 | -16.9 dB | baseline |
+| `audio_stg` 0 | 7 | 0.7 / 0.7 | -21.7 dB | unchanged |
+| **`audio_stg` 0 (shipped)** | **7** | **0.7 / 1.0** | **-23.3 / -25.8 dB** | **unchanged** |
+| `audio_cfg` 3, `audio_stg` 0 | 3 | 0.7 / 0.7 | -23.2 dB | unchanged |
+| shared rescale 1.0 | 7 | 1.0 / 1.0 | -25.3 dB | **desaturated, ghosting** |
+| distilled, for scale | - | - | -42.3 dB | n/a |
 
-**Use `audio_cfg` 3 and `audio_stg` 0.** Both act only on the audio branch, so the
-picture is untouched (verified frame by frame). Gain is 3.6-6.3 dB across two seeds.
-The cost is weaker audio prompt adherence; the negative prompt still applies at cfg 3.
+**The shipped setting is `audio_stg` 0 with `audio_rescale` 1.0 and `video_rescale`
+0.7**, which is what the bundled workflows now carry. `audio_cfg` stays at the
+reference 7.0, so no audio prompt adherence is given up. Gain is 6.4-8.9 dB across
+two seeds, and the picture is unchanged (verified frame by frame every round).
 
-**Do not raise `rescale`.** It gives the best audio numbers and it is the one that
-ruins the video: it is a *single shared knob* applied to both streams, and at 1.0 it
-strips contrast and saturation and introduces ghosting. `audio_cfg` and `audio_stg`
-are the only audio-only levers.
+**`rescale` is per-modality, and that matters.** It used to be one scalar shared by
+both streams, which forced a choice: 1.0 clears the audio but strips the video's
+contrast and saturation and brings on ghosting. The reference implementation always
+kept it per guider -- its HQ preset runs video 0.45 against audio 1.0 -- so the port
+was the thing at fault, not the setting. Splitting it removed the tradeoff.
 
-Two more things worth knowing:
+Worth knowing:
 
+- **Only about half of what shared-1.0 bought is actually free.** Audio rescale 1.0
+  on its own gains 1.6 dB; the old shared setting gained 3.6 dB. The rest came from
+  the *video* branch being rescaled and bleeding through cross-modal attention, and
+  that half cannot be had without the video cost.
+- **Lowering `audio_cfg` is no longer necessary.** At cfg 3 the old workaround
+  reached -23.2 dB; the split reaches the same or better at cfg 7.
 - **Zeroing `audio_stg` alone does not save any time.** The perturbed forward pass is
-  shared, so it is skipped only when video *and* audio STG are both 0 -- which is 23%
-  faster (261s -> 202s) and not worth it, for the video reasons above.
+  shared, so it is skipped only when video *and* audio STG are both 0 -- 23% faster
+  (261s -> 202s), and not worth it, since dropping video STG degrades the picture.
 - **Severity is content-dependent.** The grimy diner scene measures -16.9 dB; the
   papercut meadow is already -43.5 dB at reference settings. Dense, broadband scenes
   are the worst case, which is why only some Pro clips sound rough.
@@ -290,6 +299,10 @@ Two more things worth knowing:
   *worse*. Leave it at 3; it is what keeps sound synced to picture.
 
 Not solved, reduced: even fixed, Pro stays ~16-20 dB noisier than distilled here.
+
+**Migrating a saved workflow.** `TT_LTXVideoPro` went from 11 widgets to 12. A
+workflow saved before the split needs the audio value inserted at index 8, after
+`rescale` (now `video_rescale`); the two bundled workflows are already migrated.
 
 ### Geometry
 
