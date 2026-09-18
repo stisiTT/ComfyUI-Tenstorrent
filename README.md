@@ -191,6 +191,36 @@ them all to 0 does not turn guidance off -- it enables modality guidance at -1. 
 logs how many forwards per step your settings imply, so check that line if a run is
 slower than you expected.
 
+### An empty negative prompt is the *strongest* anti-style setting
+
+Leaving `TT LTX Video Pro`'s negative empty does **not** mean "no negative": the
+server substitutes the pipeline's 58-term photoreal default, which includes
+"cartoonish rendering, 3D CGI look, unrealistic materials, distorted proportions".
+At CFG > 1 that actively pushes the sample away from stylized output. If you are
+using a style adapter, supply a short neutral negative (e.g. `blurry, watermark,
+text`) or run the distilled profile (CFG 1), where the negative is inert.
+
+### Style adapters: what was and was not established
+
+Three community rank-32 style adapters (Pixar, Paper Cut Out, CRT) were tested
+against the on-device LoRA path. The math is verified to delta precision --
+`PCC(W_after - W_before, B@A)` of 0.987-0.9998 on every module kind including
+cross-attention Q and the attention gate, zero targets skipped or deferred, and
+exact parity with the reference loader's `W + strength * B@A`. The adapters
+visibly perturb the output (mean abs frame diff 40-54 vs a ~5 motion floor) but
+**did not express their advertised style** under any condition matched to their
+authors' demos: their prompt, distilled or Pro, CFG 3 or none, neutral or default
+negative, 576p or 1080p. The distillation adapter, whose effect is functional,
+works as documented. Treat third-party style adapters as unproven here until one
+demonstrably renders its style; the authors' natural-language style phrases in the
+prompt are the one untested lever.
+
+### Geometry
+
+`launch_server.sh --model ltx --height 1088 --width 1920 --frames 121` overrides
+the pinned clip shape at launch (multiples of 64; frames-1 divisible by 8).
+Geometry cannot change per request.
+
 ### Trigger words are not free variables
 
 Most style adapters need a trigger token in the prompt. Some triggers carry meaning of
