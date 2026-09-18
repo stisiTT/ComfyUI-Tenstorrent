@@ -232,6 +232,8 @@ for the full node reference and the environment-variable table.
 | `TypeError: fuse_lora() got an unexpected keyword argument 'clip_scale'` | Mixed stacks. The relocated server is paired with a `samt/standalone-media-20260703` checkout; see the table in section 2. |
 | Server never becomes healthy | First Wan 2.2 warmup can take ~25 min; check `<tt-metal>/<model>_server_comfy.log`; raise `TT_SERVER_READY_TIMEOUT` (seconds). |
 | `tt-smi not found` | Ensure `tt-smi` is on `PATH` (installed by tt-installer) or set `TT_SMI_BIN`. |
+| `Error: --board is required when --model ltx` | Only when launching the server by hand -- the node always passes it. Add `--board p300x2` (or your board) to `launch_server.sh`. |
+| LTX clip is the wrong size or length | Geometry is pinned when the pipeline is built, so it cannot change per request. Relaunch with `--height 1088 --width 1920 --frames 121`: height and width must be multiples of 64, and `frames - 1` divisible by 8. |
 | Port `:8000` already in use | Set `TT_SERVER_PORT`. The web UI port (`--port`, default 8188) is separate. |
 | Device wedged after a crash | `tt-smi -r` to reset, or use the **TT Unload Model** node's board-reset option. |
 
