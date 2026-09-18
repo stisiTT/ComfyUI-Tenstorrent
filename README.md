@@ -234,6 +234,18 @@ render in the material, and what lifts the toon from rubbery to polished.
 Earlier testing that gave these adapters only their trigger token concluded they
 were inert. That conclusion was wrong -- the prompt was.
 
+Two workflows ship these findings (`user/default/workflows/`, which is *not* under
+version control -- copy them out if you need them to survive a rebuild):
+
+| workflow | what it shows |
+|---|---|
+| `load_tt_ltx_matrix.json` | distilled vs Pro, with and without an adapter, 4 quadrants |
+| `load_tt_ltx_lora_gallery.json` | Pixar / Paper Cut Out / 90s Animation on both distilled and Pro -- 6 branches, each with a scene taken from that card's "Best Used With" list |
+
+Measured: the gallery's six branches run in 1178 s end to end (distilled ~40 s each,
+Pro reference profile ~270 s each, including one server switch). All three adapters
+parse identically -- 576 A/B pairs, zero unrecognized keys.
+
 The on-device math was verified independently of any of this:
 `PCC(W_after - W_before, B@A)` of 0.987-0.9998 on every module kind including
 cross-attention Q and the attention gate, zero targets skipped or deferred, and
