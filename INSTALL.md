@@ -1,8 +1,8 @@
 # Installing ComfyUI + Tenstorrent
 
 This guide sets up ComfyUI with the Tenstorrent custom nodes, which run **Stable
-Diffusion XL** (image) and **Wan 2.2** (text-to-video) on Tenstorrent hardware
-via a tt-metal inference server.
+Diffusion XL** and **SD 3.5** (image), **Wan 2.2** and **LTX-2.3** (video, LTX-2.3
+with audio) on Tenstorrent hardware via a tt-metal inference server.
 
 However many repos are involved, it is always **two separate Python
 environments** talking over a local HTTP socket. That isolation is intentional:
@@ -64,6 +64,7 @@ lives**; the nodes behave identically on both.
 |---|---|---|---|
 | **Stack 1** (legacy) | tt-metal repo root | `samt/standalone-media-20260703` @ `ce05994325a` | `(lora_scale_unet, lora_scale_clip)` |
 | **Stack 2** (current) | tt-inference-server `comfyui-media-server/` @ `6a4085df0` | `stisi/sdxl-per-component-lora` | `(lora_scale, clip_scale)` |
+| **Stack 2 + LTX-2.3** | tt-inference-server `ltx-runner` | `stisi/comfyui_20260916_ltx23` | `(lora_scale, clip_scale)` |
 
 **This guide follows Stack 2**, the relocated server. That is where the work is
 headed and what the container path is built from.
@@ -75,6 +76,12 @@ headed and what the container path is built from.
 > unexpected keyword argument 'clip_scale'` on the first LoRA request. Either
 > way the HTTP contract is unchanged: the request body always carries
 > `lora_scale_unet` / `lora_scale_clip`.
+
+> **For LTX-2.3 use the third row.** Its two branches are descendants of Stack 2's,
+> so the `fuse_lora` rule above still holds, but the LTX servers (`--model ltx`,
+> `--model ltx_pro`) and the LTX LoRA node exist only there. LTX adapters go in
+> `models/loras/ltx/`; that directory must exist, or the node's dropdown falls
+> back to listing adapters for other models, none of which can bind.
 
 Clone all three as siblings:
 
@@ -107,7 +114,7 @@ open. Check out that branch, init submodules, then build.
 
 ```bash
 cd ~/src/tt-metal
-git checkout stisi/sdxl-per-component-lora     # PR #47509: collapsed fuse_lora signature
+git checkout stisi/comfyui_20260916_ltx23      # LTX-2.3; descends from PR #47509's branch
 git submodule update --init --recursive
 
 # System build dependencies (uses sudo; one-time).
@@ -124,7 +131,7 @@ Then put the server repo on its branch. Nothing to build here, it is Python only
 
 ```bash
 cd ~/src/tt-inference-server
-git checkout samt/comfyui-media-server         # provides comfyui-media-server/
+git checkout ltx-runner                        # comfyui-media-server/ with the LTX servers
 ```
 
 > **Why a branch and not `main`?** PR #47509 is on the critical path and has not
