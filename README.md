@@ -200,20 +200,44 @@ At CFG > 1 that actively pushes the sample away from stylized output. If you are
 using a style adapter, supply a short neutral negative (e.g. `blurry, watermark,
 text`) or run the distilled profile (CFG 1), where the negative is inert.
 
-### Style adapters: what was and was not established
+### Style adapters: a trigger word alone is not enough
 
-Three community rank-32 style adapters (Pixar, Paper Cut Out, CRT) were tested
-against the on-device LoRA path. The math is verified to delta precision --
+Style adapters work, but only if the prompt already *describes* the style in
+plain language. The trigger token by itself does almost nothing.
+
+Look at how these adapters' author writes a prompt in their own published
+workflow: the trigger comes first, then a full style sentence, then the scene.
+
+```
+f4nt4sy4n1m6, cinematic fantasy anime cel-shaded illustration with hand-drawn
+linework, painted shading, vivid magical atmosphere, and stylized fantasy
+character design. <the actual scene>
+```
+
+Each model card has an "Other Trigger Words That Help" list -- that list is the
+style sentence. Use most of it, not just the token.
+
+Measured on the distilled profile, seed 42, identical scene text in every arm:
+
+| prompt | LoRA | result |
+|---|---|---|
+| scene only | none | photoreal forest, real fox |
+| `Pap3rCut0u7` + paper style sentence | none | photoreal forest containing a *cardboard prop* |
+| `Pap3rCut0u7` + paper style sentence | papercut @1.0 | **full paper-cutout diorama** -- layered paper trees, cut-paper fox, flat paper sky |
+| `P1x4r` + pixar style sentence | none | flat, rubbery cartoon fox |
+| `P1x4r` + pixar style sentence | pixar @1.0 | **film-grade stylized character** -- groomed fur, eye caustics, believable stylized anatomy |
+
+The no-LoRA rows are the point: the words alone get you a photoreal scene *of*
+paper, or a cheap-looking cartoon. The adapter is what makes the whole frame
+render in the material, and what lifts the toon from rubbery to polished.
+
+Earlier testing that gave these adapters only their trigger token concluded they
+were inert. That conclusion was wrong -- the prompt was.
+
+The on-device math was verified independently of any of this:
 `PCC(W_after - W_before, B@A)` of 0.987-0.9998 on every module kind including
 cross-attention Q and the attention gate, zero targets skipped or deferred, and
-exact parity with the reference loader's `W + strength * B@A`. The adapters
-visibly perturb the output (mean abs frame diff 40-54 vs a ~5 motion floor) but
-**did not express their advertised style** under any condition matched to their
-authors' demos: their prompt, distilled or Pro, CFG 3 or none, neutral or default
-negative, 576p or 1080p. The distillation adapter, whose effect is functional,
-works as documented. Treat third-party style adapters as unproven here until one
-demonstrably renders its style; the authors' natural-language style phrases in the
-prompt are the one untested lever.
+exact parity with the reference loader's `W + strength * B@A`.
 
 ### Geometry
 
