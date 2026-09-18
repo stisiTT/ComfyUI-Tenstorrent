@@ -251,6 +251,46 @@ The on-device math was verified independently of any of this:
 cross-attention Q and the attention gate, zero targets skipped or deferred, and
 exact parity with the reference loader's `W + strength * B@A`.
 
+### Pro audio: high-band noise, and the two knobs that fix it
+
+The Pro profile puts a steady hiss under the whole clip that the distilled profile
+does not. It is guidance, not the checkpoint -- Pro at 8 steps with guidance off is
+the cleanest audio this stack produces.
+
+Measured as the 5-10 kHz noise floor relative to program level (the 10th-percentile
+frame energy in that band, minus the clip's RMS -- more negative is quieter hiss
+under the content), on the 90s-cartoon diner scene, 16 runs:
+
+| setting | audio | video |
+|---|---|---|
+| reference (`audio_cfg` 7, `audio_stg` 1, `rescale` 0.7) | -16.9 dB | baseline |
+| **`audio_cfg` 3, `audio_stg` 0** | **-23.2 dB** | unchanged |
+| `audio_stg` 0 + `rescale` 1.0 | -25.3 dB | **desaturated, ghosting** |
+| both stg 0 + `rescale` 1.0 | -26.1 dB | **washed out, melted faces** |
+| distilled, for scale | -42.3 dB | n/a |
+
+**Use `audio_cfg` 3 and `audio_stg` 0.** Both act only on the audio branch, so the
+picture is untouched (verified frame by frame). Gain is 3.6-6.3 dB across two seeds.
+The cost is weaker audio prompt adherence; the negative prompt still applies at cfg 3.
+
+**Do not raise `rescale`.** It gives the best audio numbers and it is the one that
+ruins the video: it is a *single shared knob* applied to both streams, and at 1.0 it
+strips contrast and saturation and introduces ghosting. `audio_cfg` and `audio_stg`
+are the only audio-only levers.
+
+Two more things worth knowing:
+
+- **Zeroing `audio_stg` alone does not save any time.** The perturbed forward pass is
+  shared, so it is skipped only when video *and* audio STG are both 0 -- which is 23%
+  faster (261s -> 202s) and not worth it, for the video reasons above.
+- **Severity is content-dependent.** The grimy diner scene measures -16.9 dB; the
+  papercut meadow is already -43.5 dB at reference settings. Dense, broadband scenes
+  are the worst case, which is why only some Pro clips sound rough.
+- **`audio_modality` is not the cause.** Dropping it 3 -> 1 made the floor 2 dB
+  *worse*. Leave it at 3; it is what keeps sound synced to picture.
+
+Not solved, reduced: even fixed, Pro stays ~16-20 dB noisier than distilled here.
+
 ### Geometry
 
 `launch_server.sh --model ltx --height 1088 --width 1920 --frames 121` overrides
