@@ -1157,10 +1157,17 @@ class TT_LTXVideoPro:
                     {"default": 3.0, "min": 0.0, "max": 30.0, "step": 0.1,
                      "tooltip": "Cross-modal guidance for audio. 1.0 DISABLES it (not 0)."},
                 ),
-                "rescale": (
+                "video_rescale": (
                     "FLOAT",
                     {"default": 0.7, "min": 0.0, "max": 1.0, "step": 0.05,
-                     "tooltip": "CFG rescale. 0 disables it. Pointless without CFG."},
+                     "tooltip": "CFG rescale for video. 0 disables it. Pointless without CFG. "
+                                "Above ~0.7 it starts desaturating the picture."},
+                ),
+                "audio_rescale": (
+                    "FLOAT",
+                    {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05,
+                     "tooltip": "CFG rescale for audio. 1.0 recommended -- it clears the "
+                                "high-band noise floor that guidance puts under the clip."},
                 ),
                 "stg_block": (
                     "INT",
@@ -1186,8 +1193,8 @@ class TT_LTXVideoPro:
 
     def generate(
         self, model, positive, negative, steps, video_cfg, audio_cfg,
-        video_stg, audio_stg, video_modality, audio_modality, rescale,
-        stg_block, seed, unique_id=None,
+        video_stg, audio_stg, video_modality, audio_modality, video_rescale,
+        audio_rescale, stg_block, seed, unique_id=None,
     ) -> Tuple:
         if not hasattr(model, "client"):
             raise RuntimeError("TT_LTXVideoPro requires a Tenstorrent MODEL from TT_CheckpointLoader.")
@@ -1219,7 +1226,8 @@ class TT_LTXVideoPro:
         logger.info(
             f"TT_LTXVideoPro: prompt='{positive_text[:80]}', steps={steps}, "
             f"cfg={video_cfg}/{audio_cfg}, stg={video_stg}/{audio_stg}@{stg_block}, "
-            f"modality={video_modality}/{audio_modality}, rescale={rescale}, "
+            f"modality={video_modality}/{audio_modality}, "
+            f"rescale={video_rescale}/{audio_rescale}, "
             f"seed={seed} -> {forwards} transformer forward(s)/step"
         )
         _ensure_own_server(model, "TT_LTXVideoPro")
@@ -1235,7 +1243,8 @@ class TT_LTXVideoPro:
             "audio_stg_scale": float(audio_stg),
             "video_modality_scale": float(video_modality),
             "audio_modality_scale": float(audio_modality),
-            "rescale_scale": float(rescale),
+            "video_rescale_scale": float(video_rescale),
+            "audio_rescale_scale": float(audio_rescale),
             "stg_block": int(stg_block),
         }
         _attach_ltx_lora_params(av_params, model)
