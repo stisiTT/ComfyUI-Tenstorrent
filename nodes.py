@@ -52,6 +52,14 @@ logger = logging.getLogger(__name__)
 # Sentinel dropdown entry meaning "no adapter".
 LORA_NONE = "None"
 
+# Where the SDXL VAE runs, per request. "cpu" is the host torch VAE: slower, but the
+# float32 reference, useful for A/B checks. Non-1024x1024 inputs use cpu regardless.
+VAE_BACKENDS = ["device", "cpu"]
+VAE_BACKEND_TOOLTIP = (
+    "device: tt-metal VAE on the Tenstorrent chip (fast, default). "
+    "cpu: host torch VAE (float32 reference, ~7-13s per 1024x1024 image). SDXL only."
+)
+
 
 def _lora_choices(prefix: Optional[str] = None) -> list:
     """Return LoRA dropdown options from ComfyUI's ``models/loras`` folder.
@@ -727,7 +735,10 @@ class TT_VAEDecode:
             "required": {
                 "samples": ("LATENT", {"tooltip": "Latents from TT_KSampler (sdxl) or TT_WanSampler (wan22)"}),
                 "vae": ("VAE", {"tooltip": "VAE from TT_CheckpointLoader"}),
-            }
+            },
+            "optional": {
+                "backend": (VAE_BACKENDS, {"default": "device", "tooltip": VAE_BACKEND_TOOLTIP}),
+            },
         }
 
     RETURN_TYPES = ("IMAGE",)
@@ -737,7 +748,7 @@ class TT_VAEDecode:
     CATEGORY = "Tenstorrent/latent"
     DESCRIPTION = "Decode latents to images using the tt-metal VAE"
 
-    def decode(self, samples, vae) -> Tuple:
+    def decode(self, samples, vae, backend: str = "device") -> Tuple:
         if not isinstance(samples, dict) or "samples" not in samples:
             raise RuntimeError(f"TT_VAEDecode requires LATENT format. Got: {type(samples)}")
 
@@ -756,11 +767,13 @@ class TT_VAEDecode:
 
         latents = samples["samples"]
         if model_type == "wan22":
+            if backend == "cpu":
+                logger.warning("TT_VAEDecode: backend=cpu applies to SDXL only; wan22 decodes on the server as configured")
             logger.info(f"TT_VAEDecode: decoding wan22 latents {tuple(latents.shape)} via /video/vae_decode")
             images = vae.client.vae_decode_video(latents)  # [T, H, W, C] in [0, 1]
         else:
-            logger.info(f"TT_VAEDecode: decoding latents {tuple(latents.shape)} via /vae/decode")
-            images = vae.client.vae_decode(latents)  # [B, H, W, C] in [0, 1]
+            logger.info(f"TT_VAEDecode: decoding latents {tuple(latents.shape)} via /vae/decode ({backend})")
+            images = vae.client.vae_decode(latents, backend=backend)  # [B, H, W, C] in [0, 1]
         images = images.clamp(0.0, 1.0)
         logger.info(f"TT_VAEDecode: received image {tuple(images.shape)}")
         return (images,)
@@ -779,7 +792,10 @@ class TT_VAEEncode:
             "required": {
                 "pixels": ("IMAGE", {"tooltip": "Input images from LoadImage or other source"}),
                 "vae": ("VAE", {"tooltip": "VAE from TT_CheckpointLoader"}),
-            }
+            },
+            "optional": {
+                "backend": (VAE_BACKENDS, {"default": "device", "tooltip": VAE_BACKEND_TOOLTIP}),
+            },
         }
 
     RETURN_TYPES = ("LATENT",)
@@ -789,7 +805,7 @@ class TT_VAEEncode:
     CATEGORY = "Tenstorrent/latent"
     DESCRIPTION = "Encode images to latents using the tt-metal VAE"
 
-    def encode(self, pixels, vae) -> Tuple:
+    def encode(self, pixels, vae, backend: str = "device") -> Tuple:
         import torch
 
         if not hasattr(vae, "client"):
@@ -797,8 +813,8 @@ class TT_VAEEncode:
         if not isinstance(pixels, torch.Tensor) or pixels.ndim != 4:
             raise RuntimeError(f"TT_VAEEncode expects IMAGE tensor [B, H, W, C]. Got: {type(pixels)}")
 
-        logger.info(f"TT_VAEEncode: encoding image {tuple(pixels.shape)} via /vae/encode")
-        latents = vae.client.vae_encode(pixels)  # [B, C, H, W]
+        logger.info(f"TT_VAEEncode: encoding image {tuple(pixels.shape)} via /vae/encode ({backend})")
+        latents = vae.client.vae_encode(pixels, backend=backend)  # [B, C, H, W]
         logger.info(f"TT_VAEEncode: received latents {tuple(latents.shape)}")
         return ({"samples": latents},)
 

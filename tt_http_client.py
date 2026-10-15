@@ -364,15 +364,25 @@ class TTHttpClient:
         _log_lora_status(self.last_lora_status)
         return b64npy_to_tensor(data["latent"])
 
-    def vae_decode(self, latents: torch.Tensor) -> torch.Tensor:
-        """Call ``/vae/decode``. Returns an IMAGE tensor [B, H, W, C] in [0, 1]."""
+    def vae_decode(self, latents: torch.Tensor, backend: Optional[str] = None) -> torch.Tensor:
+        """Call ``/vae/decode``. Returns an IMAGE tensor [B, H, W, C] in [0, 1].
+
+        ``backend`` is "device" or "cpu"; None leaves the server default (device).
+        """
         body = {"latent": tensor_to_b64npy(latents)}
+        if backend:
+            body["backend"] = backend
         data = self._post("/vae/decode", body)
         return b64npy_to_tensor(data["image"])
 
-    def vae_encode(self, images: torch.Tensor) -> torch.Tensor:
-        """Call ``/vae/encode``. Returns latents as a torch tensor [B, C, H, W]."""
+    def vae_encode(self, images: torch.Tensor, backend: Optional[str] = None) -> torch.Tensor:
+        """Call ``/vae/encode``. Returns latents as a torch tensor [B, C, H, W].
+
+        ``backend`` is "device" or "cpu"; None leaves the server default (device).
+        """
         body = {"image": tensor_to_b64npy(images)}
+        if backend:
+            body["backend"] = backend
         data = self._post("/vae/encode", body)
         return b64npy_to_tensor(data["latent"])
 
