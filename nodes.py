@@ -27,7 +27,7 @@ if comfy_path not in sys.path:
     sys.path.insert(0, comfy_path)
 
 try:
-    from comfy.backends.tt_http_client import get_client, StagedOpNotAvailable
+    from comfy.backends.tt_http_client import get_client, StagedOpNotAvailable, tensor_to_b64npy
     print("✓ Successfully imported tt_http_client (HTTP transport)")
 except ImportError as e:
     print(f"❌ Failed to import tt_http_client: {e}")
@@ -612,8 +612,8 @@ class TT_KSampler:
                 "guidance_rescale": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Guidance rescale (0 = off)"}),
             },
             "optional": {
-                "latent_image": ("LATENT", {"tooltip": "Input latents for img2img (optional)"}),
-                "denoise": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Denoise strength (<1 = img2img)"}),
+                "latent_image": ("LATENT", {"tooltip": "Input latents. Ignored at denoise 1.0 (txt2img). For img2img, encode a 1024x1024 image with TT_VAEEncode (not the stock VAEEncode)."}),
+                "denoise": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Denoise strength. <1 = img2img: runs the last int(steps * denoise) of the steps-long schedule (diffusers strength semantics)."}),
             },
             "hidden": {
                 "unique_id": "UNIQUE_ID",
@@ -665,14 +665,17 @@ class TT_KSampler:
             params["lora_scale_unet"] = model.lora.get("lora_scale_unet", legacy)
             params["lora_scale_clip"] = model.lora.get("lora_scale_clip", legacy)
 
-        # img2img: not yet supported by the staged SDXL path (the base
-        # TtSDXLPipeline standup does not accept an input-latent / denoising-start
-        # contract). Fail loudly instead of silently ignoring the input.
+        # img2img: the server noises these latents to the strength's start sigma and
+        # runs the tail of the schedule. Latents must be TT_VAEEncode output (scaled
+        # by the VAE scaling factor, the server's /vae/encode contract).
         if latent_image is not None and float(denoise) < 1.0:
-            raise RuntimeError(
-                "TT_KSampler: staged img2img (latent_image with denoise < 1.0) is not "
-                "supported in this POC. Use denoise=1.0 (txt2img). img2img is a follow-up."
-            )
+            if latent_image.get("noise_mask") is not None:
+                raise RuntimeError("TT_KSampler: latent noise masks (inpainting) are not supported yet.")
+            if latent_image.get("tt_already_decoded"):
+                raise RuntimeError("TT_KSampler: latent_image is a decoded image, not latents; use TT_VAEEncode.")
+            params["latent_image"] = tensor_to_b64npy(latent_image["samples"])
+            params["denoise_strength"] = float(denoise)
+            logger.info(f"  img2img: denoise={float(denoise)}, latent {tuple(latent_image['samples'].shape)}")
 
         progress_callback = build_denoise_progress_callback(int(steps), unique_id)
 
@@ -696,6 +699,8 @@ class TT_KSampler:
                 "Staged /latent/denoise not available — falling back to full-pipeline "
                 "/image/generations (TT_VAEDecode will pass the image through)."
             )
+            if "latent_image" in params:
+                raise RuntimeError("TT_KSampler: img2img needs the staged /latent/denoise endpoint on the server.")
             # Drop staged-only fields the full endpoint doesn't accept.
             params.pop("latent_image", None)
             params.pop("denoise_strength", None)
