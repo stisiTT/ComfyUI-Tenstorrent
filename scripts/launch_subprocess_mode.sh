@@ -18,14 +18,14 @@
 #
 # The two paths below must come from the SAME stack — the relocated server calls
 # fuse_lora(lora_scale, clip_scale), which only the per-component-LoRA tt-metal
-# branch accepts. See custom_nodes/tenstorrent_nodes/INTEGRATION.md.
+# branch accepts. See INTEGRATION.md.
 #
 # Usage:
 #   ./launch_subprocess_mode.sh [--port 8188] [--listen 127.0.0.1]
 #   (any args are passed straight through to launch_with_http.sh)
 #
 # Layout assumed (override either path via the environment):
-#   <parent>/ComfyUI              <- this repo
+#   <parent>/ComfyUI              <- stock ComfyUI, this repo in custom_nodes/
 #   <parent>/tt-inference-server  <- holds comfyui-media-server/
 #   <parent>/tt-metal             <- built tt-metal (supplies ttnn / models.*)
 ################################################################################
@@ -33,7 +33,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PARENT_DIR="$(dirname "${SCRIPT_DIR}")"
+# <parent>/ComfyUI/custom_nodes/ComfyUI-Tenstorrent/scripts -> <parent>
+PARENT_DIR="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
 
 export TT_LAUNCH_MODE=subprocess
 # Directory holding launch_server.sh (the relocated server).

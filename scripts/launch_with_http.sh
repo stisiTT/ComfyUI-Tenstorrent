@@ -37,7 +37,8 @@ set -euo pipefail
 # Configuration
 #===============================================================================
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly COMFYUI_DIR="${COMFYUI_DIR:-${SCRIPT_DIR}}"
+# <ComfyUI>/custom_nodes/ComfyUI-Tenstorrent/scripts -> <ComfyUI>
+readonly COMFYUI_DIR="${COMFYUI_DIR:-$(cd "${SCRIPT_DIR}/../../.." && pwd)}"
 readonly COMFYUI_VENV="${COMFYUI_DIR}/venv"
 readonly SERVER_PID_FILE="${TT_SERVER_PID_FILE:-/tmp/tt_comfy_server.pid}"
 
@@ -128,7 +129,7 @@ launch_comfyui() {
     info "Pick a model in the TT Checkpoint Loader node to stand up the tt-metal server."
     info "Press Ctrl+C to stop ComfyUI (and any tt-metal server it started)."
     echo ""
-    exec python3 main.py --port "${COMFYUI_PORT}" --listen "${COMFYUI_LISTEN}" --tenstorrent
+    exec python3 main.py --port "${COMFYUI_PORT}" --listen "${COMFYUI_LISTEN}" --cpu
 }
 
 #===============================================================================
