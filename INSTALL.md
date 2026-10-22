@@ -105,6 +105,9 @@ Resulting layout:
 ComfyUI itself is unmodified; everything Tenstorrent-specific is in this
 package.
 
+> ComfyUI-Tenstorrent is a private repo for now. Cloning it needs a GitHub
+> account with access, authenticated for HTTPS (for example `gh auth login`).
+
 > For **Stack 1**, omit tt-inference-server: `TT_METAL_DIR` defaults to
 > `../tt-metal`, whose repo root holds `launch_server.sh`, so the sibling layout
 > just works. Either way, set `TT_METAL_DIR` explicitly if you put the server
