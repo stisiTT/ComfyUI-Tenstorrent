@@ -27,7 +27,7 @@ import numpy as np
 import requests
 import torch
 
-logger = logging.getLogger("comfy.backends.tt_http")
+logger = logging.getLogger("tenstorrent_nodes.tt_http")
 
 
 def _log_lora_status(lora: Optional[Dict[str, Any]]) -> None:

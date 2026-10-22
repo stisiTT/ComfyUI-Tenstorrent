@@ -58,7 +58,7 @@ _MODEL_LABEL_HINTS = {
 # Default to the tt-metal checkout sitting next to this ComfyUI repo (the
 # documented sibling layout: <parent>/ComfyUI and <parent>/tt-metal). Override
 # with TT_METAL_DIR if it lives elsewhere. __file__ is
-# <ComfyUI>/custom_nodes/tenstorrent_nodes/server_manager.py, so three dirnames
+# <ComfyUI>/custom_nodes/ComfyUI-Tenstorrent/server_manager.py, so three dirnames
 # up is the ComfyUI root.
 _COMFYUI_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TT_METAL_DIR = os.getenv("TT_METAL_DIR", os.path.join(os.path.dirname(_COMFYUI_ROOT), "tt-metal"))

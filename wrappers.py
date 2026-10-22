@@ -3,7 +3,7 @@ Wrapper classes for Tenstorrent hardware models.
 
 These lightweight wrappers store model metadata and provide the interface
 expected by ComfyUI nodes. Actual inference runs on the tt-metal HTTP server
-(see ``comfy/backends/tt_http_client.py``).
+(see ``tt_http_client.py``).
 """
 
 import torch

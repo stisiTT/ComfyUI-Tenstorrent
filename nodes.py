@@ -3,7 +3,7 @@ Custom ComfyUI nodes for Tenstorrent hardware.
 
 Provides nodes for loading models and running staged inference (denoise /
 VAE encode / VAE decode) on Tenstorrent accelerators via the tt-metal HTTP
-inference server (see ``comfy/backends/tt_http_client.py``).
+inference server (see ``tt_http_client.py``).
 
 Architecture (all-custom nodes, server owns the denoise loop):
 
@@ -18,16 +18,10 @@ import io
 import logging
 import os
 import random
-import sys
 from typing import Optional, Tuple
 
-# Add comfy to path for imports
-comfy_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "comfy")
-if comfy_path not in sys.path:
-    sys.path.insert(0, comfy_path)
-
 try:
-    from comfy.backends.tt_http_client import get_client, StagedOpNotAvailable, tensor_to_b64npy
+    from .tt_http_client import get_client, StagedOpNotAvailable, tensor_to_b64npy
     print("✓ Successfully imported tt_http_client (HTTP transport)")
 except ImportError as e:
     print(f"❌ Failed to import tt_http_client: {e}")
@@ -114,13 +108,7 @@ def _resolve_lora_path(name: Optional[str]) -> Optional[str]:
 
 
 def _default_server_url() -> str:
-    """Resolve the default server URL from ComfyUI cli args / env."""
-    try:
-        from comfy.cli_args import args
-        if getattr(args, "tt_server_url", None):
-            return args.tt_server_url
-    except Exception:
-        pass
+    """Resolve the default server URL from the environment."""
     return os.getenv("TT_SERVER_URL", "http://127.0.0.1:8000")
 
 
