@@ -1,0 +1,861 @@
+{
+ "id": "bc4b1e7b-d69e-4130-bac2-c4c6ae745959",
+ "revision": 0,
+ "last_node_id": 12,
+ "last_link_id": 16,
+ "nodes": [
+  {
+   "id": 1,
+   "type": "TT_CheckpointLoader",
+   "pos": [
+    40,
+    120
+   ],
+   "size": [
+    300,
+    146
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "model_type",
+     "name": "model_type",
+     "type": "COMBO",
+     "widget": {
+      "name": "model_type"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "board",
+     "name": "board",
+     "type": "STRING",
+     "widget": {
+      "name": "board"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "server_url",
+     "name": "server_url",
+     "type": "STRING",
+     "widget": {
+      "name": "server_url"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "model",
+     "name": "model",
+     "type": "MODEL",
+     "links": [
+      6
+     ]
+    },
+    {
+     "localized_name": "clip",
+     "name": "clip",
+     "type": "CLIP",
+     "links": [
+      4,
+      5
+     ]
+    },
+    {
+     "localized_name": "vae",
+     "name": "vae",
+     "type": "VAE",
+     "links": [
+      3,
+      11
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "TT_CheckpointLoader"
+   },
+   "widgets_values": [
+    "sdxl",
+    "p150",
+    ""
+   ],
+   "title": ".TT Checkpoint (sdxl, p150)"
+  },
+  {
+   "id": 2,
+   "type": "LoadImage",
+   "pos": [
+    40,
+    300
+   ],
+   "size": [
+    300,
+    320
+   ],
+   "flags": {},
+   "order": 1,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "image",
+     "name": "image",
+     "type": "COMBO",
+     "widget": {
+      "name": "image"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "IMAGE",
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      1,
+      12
+     ]
+    },
+    {
+     "localized_name": "MASK",
+     "name": "MASK",
+     "type": "MASK",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LoadImage"
+   },
+   "widgets_values": [
+    "tt_img2img_example.png",
+    "image"
+   ],
+   "title": "#00. Image (from Photoshop)"
+  },
+  {
+   "id": 3,
+   "type": "ImageScale",
+   "pos": [
+    380,
+    300
+   ],
+   "size": [
+    280,
+    130
+   ],
+   "flags": {},
+   "order": 2,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "image",
+     "name": "image",
+     "type": "IMAGE",
+     "link": 1
+    },
+    {
+     "localized_name": "upscale_method",
+     "name": "upscale_method",
+     "type": "COMBO",
+     "widget": {
+      "name": "upscale_method"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "width",
+     "name": "width",
+     "type": "INT",
+     "widget": {
+      "name": "width"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "height",
+     "name": "height",
+     "type": "INT",
+     "widget": {
+      "name": "height"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "crop",
+     "name": "crop",
+     "type": "COMBO",
+     "widget": {
+      "name": "crop"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "IMAGE",
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      2
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "ImageScale"
+   },
+   "widgets_values": [
+    "lanczos",
+    1024,
+    1024,
+    "disabled"
+   ],
+   "title": ".Stretch to 1024x1024"
+  },
+  {
+   "id": 4,
+   "type": "TT_VAEEncode",
+   "pos": [
+    700,
+    300
+   ],
+   "size": [
+    200,
+    50
+   ],
+   "flags": {},
+   "order": 3,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "pixels",
+     "name": "pixels",
+     "type": "IMAGE",
+     "link": 2
+    },
+    {
+     "localized_name": "vae",
+     "name": "vae",
+     "type": "VAE",
+     "link": 3
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "samples",
+     "name": "samples",
+     "type": "LATENT",
+     "links": [
+      9
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "TT_VAEEncode"
+   },
+   "widgets_values": [],
+   "title": ".TT VAE Encode"
+  },
+  {
+   "id": 5,
+   "type": "CLIPTextEncode",
+   "pos": [
+    380,
+    100
+   ],
+   "size": [
+    400,
+    120
+   ],
+   "flags": {},
+   "order": 4,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "clip",
+     "name": "clip",
+     "type": "CLIP",
+     "link": 4
+    },
+    {
+     "localized_name": "text",
+     "name": "text",
+     "type": "STRING",
+     "widget": {
+      "name": "text"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "CONDITIONING",
+     "name": "CONDITIONING",
+     "type": "CONDITIONING",
+     "links": [
+      7
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "CLIPTextEncode"
+   },
+   "widgets_values": [
+    "Delightful cute cartoon illustration of a happy, friendly Tyrannosaurus rex walking through a sunny prehistoric fern forest, huge sparkling expressive eyes, big cheerful smile with rounded teeth, chunky rounded shapes, clean bold black outlines, flat cel shading, vibrant saturated colors, bright pastel sky, whimsical children's picture book style"
+   ],
+   "title": "#01. Prompt"
+  },
+  {
+   "id": 6,
+   "type": "CLIPTextEncode",
+   "pos": [
+    800,
+    100
+   ],
+   "size": [
+    360,
+    100
+   ],
+   "flags": {},
+   "order": 5,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "clip",
+     "name": "clip",
+     "type": "CLIP",
+     "link": 5
+    },
+    {
+     "localized_name": "text",
+     "name": "text",
+     "type": "STRING",
+     "widget": {
+      "name": "text"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "CONDITIONING",
+     "name": "CONDITIONING",
+     "type": "CONDITIONING",
+     "links": [
+      8
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "CLIPTextEncode"
+   },
+   "widgets_values": [
+    "photograph, photorealistic, realistic skin texture, 3d render, scary, menacing, gore, gritty, dark, muted colors, desaturated, deformed anatomy, extra limbs, blurry, low resolution, watermark, text, signature, frame"
+   ],
+   "title": "#02. Negative prompt"
+  },
+  {
+   "id": 7,
+   "type": "TT_KSampler",
+   "pos": [
+    1200,
+    100
+   ],
+   "size": [
+    300,
+    262
+   ],
+   "flags": {},
+   "order": 6,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "model",
+     "name": "model",
+     "type": "MODEL",
+     "link": 6
+    },
+    {
+     "localized_name": "positive",
+     "name": "positive",
+     "type": "CONDITIONING",
+     "link": 7
+    },
+    {
+     "localized_name": "negative",
+     "name": "negative",
+     "type": "CONDITIONING",
+     "link": 8
+    },
+    {
+     "localized_name": "latent_image",
+     "name": "latent_image",
+     "type": "LATENT",
+     "link": 9
+    },
+    {
+     "localized_name": "seed",
+     "name": "seed",
+     "type": "INT",
+     "widget": {
+      "name": "seed"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "steps",
+     "name": "steps",
+     "type": "INT",
+     "widget": {
+      "name": "steps"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "cfg",
+     "name": "cfg",
+     "type": "FLOAT",
+     "widget": {
+      "name": "cfg"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "guidance_rescale",
+     "name": "guidance_rescale",
+     "type": "FLOAT",
+     "widget": {
+      "name": "guidance_rescale"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "denoise",
+     "name": "denoise",
+     "type": "FLOAT",
+     "widget": {
+      "name": "denoise"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "samples",
+     "name": "samples",
+     "type": "LATENT",
+     "links": [
+      10
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "TT_KSampler"
+   },
+   "widgets_values": [
+    7,
+    "randomize",
+    30,
+    9.0,
+    0.0,
+    0.8
+   ],
+   "title": "#03. Sampler (denoise = how much to change)"
+  },
+  {
+   "id": 8,
+   "type": "TT_VAEDecode",
+   "pos": [
+    1540,
+    100
+   ],
+   "size": [
+    180,
+    50
+   ],
+   "flags": {},
+   "order": 7,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "samples",
+     "name": "samples",
+     "type": "LATENT",
+     "link": 10
+    },
+    {
+     "localized_name": "vae",
+     "name": "vae",
+     "type": "VAE",
+     "link": 11
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "links": [
+      13
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "TT_VAEDecode"
+   },
+   "widgets_values": [],
+   "title": ".TT VAE Decode"
+  },
+  {
+   "id": 9,
+   "type": "GetImageSize",
+   "pos": [
+    380,
+    470
+   ],
+   "size": [
+    200,
+    90
+   ],
+   "flags": {},
+   "order": 8,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "image",
+     "name": "image",
+     "type": "IMAGE",
+     "link": 12
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "width",
+     "name": "width",
+     "type": "INT",
+     "links": [
+      14
+     ]
+    },
+    {
+     "localized_name": "height",
+     "name": "height",
+     "type": "INT",
+     "links": [
+      15
+     ]
+    },
+    {
+     "localized_name": "batch_size",
+     "name": "batch_size",
+     "type": "INT",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "GetImageSize"
+   },
+   "widgets_values": [],
+   "title": ".Canvas size"
+  },
+  {
+   "id": 10,
+   "type": "ImageScale",
+   "pos": [
+    1540,
+    200
+   ],
+   "size": [
+    260,
+    130
+   ],
+   "flags": {},
+   "order": 9,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "image",
+     "name": "image",
+     "type": "IMAGE",
+     "link": 13
+    },
+    {
+     "localized_name": "upscale_method",
+     "name": "upscale_method",
+     "type": "COMBO",
+     "widget": {
+      "name": "upscale_method"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "width",
+     "name": "width",
+     "type": "INT",
+     "widget": {
+      "name": "width"
+     },
+     "link": 14
+    },
+    {
+     "localized_name": "height",
+     "name": "height",
+     "type": "INT",
+     "widget": {
+      "name": "height"
+     },
+     "link": 15
+    },
+    {
+     "localized_name": "crop",
+     "name": "crop",
+     "type": "COMBO",
+     "widget": {
+      "name": "crop"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "IMAGE",
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      16
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "ImageScale"
+   },
+   "widgets_values": [
+    "lanczos",
+    1024,
+    1024,
+    "disabled"
+   ],
+   "title": ".Back to canvas size"
+  },
+  {
+   "id": 11,
+   "type": "SaveImage",
+   "pos": [
+    1540,
+    360
+   ],
+   "size": [
+    400,
+    240
+   ],
+   "flags": {},
+   "order": 10,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "link": 16
+    },
+    {
+     "localized_name": "filename_prefix",
+     "name": "filename_prefix",
+     "type": "STRING",
+     "widget": {
+      "name": "filename_prefix"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [],
+   "properties": {
+    "Node name for S&R": "SaveImage"
+   },
+   "widgets_values": [
+    "photoshop/tt_sdxl_img2img"
+   ]
+  },
+  {
+   "id": 12,
+   "type": "Note",
+   "pos": [
+    40,
+    640
+   ],
+   "size": [
+    760,
+    260
+   ],
+   "flags": {},
+   "order": 11,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "title": ".Notes",
+   "properties": {},
+   "widgets_values": [
+    "TT SDXL image-to-image for Photoshop (SD-PPP 2.0).\n\nPanel shows: 00 Image (set it from the canvas or a layer), 01 Prompt, 02 Negative prompt, 03 Sampler. Nodes titled with a leading '.' are hidden from the panel.\n\nThe image is stretched to 1024x1024 for the TT model, then the result is scaled back to the original canvas size so it lines up when you Send to PS as a layer. Very wide or tall canvases distort more; crop near-square for best results.\n\nSampler denoise is the strength: 0.8-0.85 (cfg 8-9) for photo -> cartoon, ~0.6 (cfg 7) for light restyles, 0.9+ drifts from the original. Runs int(steps x denoise) steps. No masks / inpainting yet. No unload node here: use tt_shutdown_reset when done."
+   ]
+  }
+ ],
+ "links": [
+  [
+   1,
+   2,
+   0,
+   3,
+   0,
+   "IMAGE"
+  ],
+  [
+   2,
+   3,
+   0,
+   4,
+   0,
+   "IMAGE"
+  ],
+  [
+   3,
+   1,
+   2,
+   4,
+   1,
+   "VAE"
+  ],
+  [
+   4,
+   1,
+   1,
+   5,
+   0,
+   "CLIP"
+  ],
+  [
+   5,
+   1,
+   1,
+   6,
+   0,
+   "CLIP"
+  ],
+  [
+   6,
+   1,
+   0,
+   7,
+   0,
+   "MODEL"
+  ],
+  [
+   7,
+   5,
+   0,
+   7,
+   1,
+   "CONDITIONING"
+  ],
+  [
+   8,
+   6,
+   0,
+   7,
+   2,
+   "CONDITIONING"
+  ],
+  [
+   9,
+   4,
+   0,
+   7,
+   3,
+   "LATENT"
+  ],
+  [
+   10,
+   7,
+   0,
+   8,
+   0,
+   "LATENT"
+  ],
+  [
+   11,
+   1,
+   2,
+   8,
+   1,
+   "VAE"
+  ],
+  [
+   12,
+   2,
+   0,
+   9,
+   0,
+   "IMAGE"
+  ],
+  [
+   13,
+   8,
+   0,
+   10,
+   0,
+   "IMAGE"
+  ],
+  [
+   14,
+   9,
+   0,
+   10,
+   2,
+   "INT"
+  ],
+  [
+   15,
+   9,
+   1,
+   10,
+   3,
+   "INT"
+  ],
+  [
+   16,
+   10,
+   0,
+   11,
+   0,
+   "IMAGE"
+  ]
+ ],
+ "groups": [
+  {
+   "id": 1,
+   "title": "TT SDXL image-to-image for Photoshop",
+   "bounding": [
+    20,
+    50,
+    1980,
+    560
+   ],
+   "color": "#5b77a0",
+   "flags": {}
+  }
+ ],
+ "config": {},
+ "extra": {
+  "ds": {
+   "scale": 0.8,
+   "offset": [
+    0,
+    0
+   ]
+  },
+  "frontendVersion": "1.45.15"
+ },
+ "version": 0.4
+}
