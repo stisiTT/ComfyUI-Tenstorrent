@@ -10,8 +10,8 @@ Last updated: 2026-08-28.
 ## The three repos and how they connect
 
 ```
-ComfyUI (this repo)                 tt-metal                         tt-inference-server
-  custom_nodes/tenstorrent_nodes      standalone media server          comfyui-media-server/
+ComfyUI-Tenstorrent (this repo)     tt-metal                         tt-inference-server
+  in ComfyUI/custom_nodes/            standalone media server          comfyui-media-server/
     server_manager.py  ── spawns ──▶  launch_server.sh                   (relocated copy of the
     nodes.py           ── HTTP  ──▶   server.py  ──▶ TT hardware          same server, for the
                                       (runners import ttnn/models.*)      Docker/run.py path)
@@ -34,7 +34,7 @@ They differ only in where the server code lives and how many repos you clone.
 
 | Repo | Branch | Commit | Pushed? | Notes |
 |------|--------|--------|---------|-------|
-| ComfyUI | `master` (stisiTT/ComfyUI) | `d37fd794`+ | yes (origin) | These custom nodes. Fork of comfyanonymous/ComfyUI; the nodes live entirely in `custom_nodes/tenstorrent_nodes/`. |
+| ComfyUI-Tenstorrent | `main` (stisiTT/ComfyUI-Tenstorrent) | latest | yes (origin) | These custom nodes, cloned into `custom_nodes/` of stock Comfy-Org/ComfyUI. Replaces the old stisiTT/ComfyUI fork. |
 | tt-metal | `samt/standalone-media-20260703` | `ce05994325a` | yes (origin) | Amalgamation of the PRs below **plus** its own copy of the server at the repo root. Full per-component LoRA (UNet scale + text-encoder LoRA) under the `(lora_scale_unet, lora_scale_clip)` names. Must be **built** (`./build_metal.sh`, `./create_venv.sh`). |
 
 Nothing to set: `TT_LAUNCH_MODE` defaults to `subprocess` and `TT_METAL_DIR` to
@@ -81,12 +81,12 @@ blocker).
 
 ```bash
 export HF_HOME=/path/to/hf_cache      # optional: so weights don't download on first request
-cd <ComfyUI>
-./launch_with_http.sh --port 8188 --listen 127.0.0.1
+cd <ComfyUI>/custom_nodes/ComfyUI-Tenstorrent
+./scripts/launch_with_http.sh --port 8188 --listen 127.0.0.1
 ```
 
 `TT_METAL_DIR` defaults to `../tt-metal`, whose repo root holds `launch_server.sh`
-and the runners. See [`../../INSTALL.md`](../../INSTALL.md) for the full setup.
+and the runners. See [`INSTALL.md`](INSTALL.md) for the full setup.
 
 **Stack 2 (relocated server).** The server lives in tt-inference-server, while
 `TT_METAL_HOME` points at the tt-metal checkout supplying `ttnn` / `models.*`:
@@ -94,11 +94,11 @@ and the runners. See [`../../INSTALL.md`](../../INSTALL.md) for the full setup.
 ```bash
 export TT_METAL_DIR=<tt-inference-server>/comfyui-media-server   # holds launch_server.sh
 export TT_METAL_HOME=<tt-metal>                    # built, on stisi/sdxl-per-component-lora
-cd <ComfyUI>
-./launch_with_http.sh --port 8188 --listen 127.0.0.1
+cd <ComfyUI>/custom_nodes/ComfyUI-Tenstorrent
+./scripts/launch_with_http.sh --port 8188 --listen 127.0.0.1
 ```
 
-`launch_subprocess_mode.sh` in the ComfyUI root wraps exactly this.
+`scripts/launch_subprocess_mode.sh` wraps exactly this.
 
 > **Do not mix the stacks.** `fuse_lora`'s signature differs between the tt-metal
 > branches, so the server copy and the `TT_METAL_HOME` checkout must come from the
@@ -157,7 +157,7 @@ cd <tt-inference-server>/comfyui-media-server
 ```
 
 Fall back to the working path meanwhile with `TT_LAUNCH_MODE=subprocess` (see
-Path A), which is what `launch_subprocess_mode.sh` in the ComfyUI root sets up.
+Path A), which is what `scripts/launch_subprocess_mode.sh` sets up.
 
 See `tt-inference-server/comfyui-media-server/LOCAL_TESTING.md` for details.
 

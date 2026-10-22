@@ -88,14 +88,14 @@ All read by `server_manager.py`; every default is overridable:
 
 ## Launching ComfyUI
 
-From the ComfyUI repo root:
+From this package's directory (`<ComfyUI>/custom_nodes/ComfyUI-Tenstorrent`):
 
 ```bash
-./launch_with_http.sh            # defaults: port 8188, listen 127.0.0.1
-./launch_with_http.sh --port 8188 --listen 0.0.0.0
+./scripts/launch_with_http.sh            # defaults: port 8188, listen 127.0.0.1
+./scripts/launch_with_http.sh --port 8188 --listen 0.0.0.0
 ```
 
-This activates the ComfyUI venv and runs `main.py --tenstorrent`. You do **not**
+This activates the ComfyUI venv and runs `main.py --cpu`. You do **not**
 start the tt-metal server yourself — pick a model in the **TT Checkpoint Loader**
 node and it will spawn and supervise the server for you. On exit, the launcher
 backstops a kill of any tt-metal server the node left running.

@@ -9,8 +9,8 @@ environments** talking over a local HTTP socket. That isolation is intentional:
 tt-metal's native/NumPy ABI must never mix with ComfyUI's.
 
 ```
-ComfyUI  (this repo, ComfyUI venv)            media server (runs in tt-metal's python_env)
-  main.py --tenstorrent                          server.py  (FastAPI media server)
+ComfyUI + this package (ComfyUI venv)         media server (runs in tt-metal's python_env)
+  main.py --cpu                                  server.py  (FastAPI media server)
    └ TT_CheckpointLoader                          └ launch_server.sh
         └ spawns ──────────────────Popen────────────▶ launch_server.sh
         └ talks ───────────────HTTP :8000───────────▶ server.py ──▶ Tenstorrent device
@@ -83,21 +83,27 @@ headed and what the container path is built from.
 > `models/loras/ltx/`; that directory must exist, or the node's dropdown falls
 > back to listing adapters for other models, none of which can bind.
 
-Clone all three as siblings:
+Clone stock ComfyUI and the two Tenstorrent repos as siblings, then clone this
+package into ComfyUI's `custom_nodes/`:
 
 ```bash
 cd ~/src                 # or wherever you keep checkouts
-git clone https://github.com/stisiTT/ComfyUI.git
+git clone https://github.com/Comfy-Org/ComfyUI.git
 git clone https://github.com/tenstorrent/tt-metal.git
 git clone https://github.com/tenstorrent/tt-inference-server.git
+git clone https://github.com/stisiTT/ComfyUI-Tenstorrent.git ComfyUI/custom_nodes/ComfyUI-Tenstorrent
 ```
 
 Resulting layout:
 ```
 ~/src/ComfyUI
+~/src/ComfyUI/custom_nodes/ComfyUI-Tenstorrent
 ~/src/tt-metal
 ~/src/tt-inference-server
 ```
+
+ComfyUI itself is unmodified; everything Tenstorrent-specific is in this
+package.
 
 > For **Stack 1**, omit tt-inference-server: `TT_METAL_DIR` defaults to
 > `../tt-metal`, whose repo root holds `launch_server.sh`, so the sibling layout
@@ -158,6 +164,7 @@ python3.12 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
+pip install -r custom_nodes/ComfyUI-Tenstorrent/requirements.txt
 ```
 
 > **torch note:** compute runs on the Tenstorrent device, not on a GPU, so the
@@ -165,22 +172,22 @@ pip install -r requirements.txt
 > ```bash
 > pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 > ```
-> (run this before `pip install -r requirements.txt`).
+> (run this before the two `pip install -r` lines).
 
 ---
 
 ## 5. Launch
 
 ```bash
-cd ~/src/ComfyUI
-./launch_subprocess_mode.sh           # Stack 2; ComfyUI on http://127.0.0.1:8188
+cd ~/src/ComfyUI/custom_nodes/ComfyUI-Tenstorrent
+./scripts/launch_subprocess_mode.sh   # Stack 2; ComfyUI on http://127.0.0.1:8188
 # options are passed straight through: --port 8188  --listen 127.0.0.1
 ```
 
 > `launch_subprocess_mode.sh` exports
 > `TT_METAL_DIR=<parent>/tt-inference-server/comfyui-media-server` and
 > `TT_METAL_HOME=<parent>/tt-metal`, then execs `launch_with_http.sh`. On
-> **Stack 1** run `./launch_with_http.sh` directly instead: no environment
+> **Stack 1** run `./scripts/launch_with_http.sh` directly instead: no environment
 > variables are needed, since `TT_METAL_DIR` defaults to `../tt-metal`.
 >
 > Keep `--listen` on `127.0.0.1` unless you trust every host on the network.
@@ -190,15 +197,17 @@ cd ~/src/ComfyUI
 > There is also a containerized path (`TT_LAUNCH_MODE=docker`) that runs the
 > server through tt-inference-server's `run.py`; it needs an image built first,
 > so it is opt-in. Both stacks and both launch paths are documented in
-> [`custom_nodes/tenstorrent_nodes/INTEGRATION.md`](custom_nodes/tenstorrent_nodes/INTEGRATION.md).
+> [`INTEGRATION.md`](INTEGRATION.md).
 
-This activates the ComfyUI venv and runs `main.py --tenstorrent`. Open the web UI,
+This activates the ComfyUI venv and runs `main.py --cpu` (the device does the
+compute; ComfyUI only orchestrates). Open the web UI,
 build a graph starting from **TT Checkpoint Loader**, and pick a model:
 
 - `sdxl` → image graph: `TT KSampler` → `TT VAE Decode` → Save Image
 - `wan22` → video graph: `TT Wan Sampler` → `TT VAE Decode`
 
-See [`custom_nodes/tenstorrent_nodes/README.md`](custom_nodes/tenstorrent_nodes/README.md)
+Ready-made SDXL graphs (txt2img, img2img, and Photoshop/SD-PPP variants) are in
+`example_workflows/`. See [`README.md`](README.md)
 for the full node reference and the environment-variable table.
 
 ---
@@ -238,4 +247,4 @@ for the full node reference and the environment-variable table.
 | Device wedged after a crash | `tt-smi -r` to reset, or use the **TT Unload Model** node's board-reset option. |
 
 For the full list of configuration variables and per-node details, see the node
-[README](custom_nodes/tenstorrent_nodes/README.md).
+[README](README.md).
