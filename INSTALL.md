@@ -42,9 +42,11 @@ the tt-metal server for you. You do not launch the server by hand.
   |---------|------------------------|-------|
   | SDXL    | `p150` (1 chip; uses up to 4) | image generation |
   | Wan 2.2 | `p300x2` (QuietBox 2)  | text-to-video |
+  | LTX-2.3 | `p300x2` (QuietBox 2)  | text-to-video with audio |
 
-  Other boards can be selected with `TT_SDXL_BOARD` / `TT_WAN22_BOARD` or the
-  node's `board` input, but the two above are the tested paths.
+  Other boards can be selected with `TT_SDXL_BOARD` / `TT_WAN22_BOARD` /
+  `TT_LTX_BOARD` or the node's `board` input, but the ones above are the
+  tested paths.
 - **OS / tooling:** Ubuntu 24.04, **Python 3.12**, `git`, and
   [`uv`](https://github.com/astral-sh/uv) (used by tt-metal's venv script):
   ```bash
@@ -207,20 +209,78 @@ compute; ComfyUI only orchestrates). Open the web UI,
 build a graph starting from **TT Checkpoint Loader**, and pick a model:
 
 - `sdxl` → image graph: `TT KSampler` → `TT VAE Decode` → Save Image
-- `wan22` → video graph: `TT Wan Sampler` → `TT VAE Decode`
+- `wan22` → video graph: `TT Wan Sampler` → `TT VAE Decode` → Create Video
+- `ltx` / `ltx_pro` → `TT LTX Video` / `TT LTX Video Pro` → `TT Preview Video`
 
-Ready-made SDXL graphs (txt2img, img2img, and Photoshop/SD-PPP variants) are in
-`example_workflows/`. See [`README.md`](README.md)
-for the full node reference and the environment-variable table.
+Or start from one of the example workflows in the next section. See
+[`README.md`](README.md) for the full node reference and the
+environment-variable table.
 
 ---
 
-## 6. First run: weights + warmup
+## 6. Example workflows
+
+The package ships ready-made graphs in `example_workflows/`. ComfyUI lists them
+under **Templates** in the workflow menu, grouped as **ComfyUI-Tenstorrent**.
+Opening a template gives you an unsaved copy; save it to keep your edits.
+
+| Workflow | Model | Needs |
+|---|---|---|
+| `tt_sdxl_photoshop` | SDXL txt2img | nothing extra |
+| `tt_sdxl_img2img` | SDXL img2img | an input image, uploaded in the Load Image node |
+| `tt_sdxl_img2img_photoshop` | SDXL img2img | the SD-PPP plugin (below) |
+| `tt_shutdown_reset` | any | nothing; stops the server and resets the boards |
+| `load_tt_wan_standalone` | Wan 2.2 | nothing extra |
+| `load_tt_wan_standalone_lora` | Wan 2.2 + Lightning | Wan LoRA files (below) |
+| `load_tt_ltx_standalone` | LTX-2.3 | nothing extra for the distilled path |
+| `load_tt_ltx_matrix`, `load_tt_ltx_lora_gallery` | LTX-2.3 + style LoRAs | LTX LoRA files (below) |
+
+Video graphs end in core **Create Video** → **TT Preview Video**, which plays
+the clip in the graph without writing a file. To keep the clip, swap in core
+**Save Video**. No third-party node packs are needed.
+
+**LoRA files.** Put them under `ComfyUI/models/loras/`. The node dropdowns list
+what is there, filtered by folder.
+
+- Wan Lightning, from
+  [`lightx2v/Wan2.2-Lightning`](https://huggingface.co/lightx2v/Wan2.2-Lightning):
+  ```bash
+  huggingface-cli download lightx2v/Wan2.2-Lightning \
+      --include "Wan2.2-T2V-A14B-4steps-lora-250928/*.safetensors" \
+      --local-dir ComfyUI/models/loras/wan22/lightning
+  ```
+- LTX-2.3, into `ComfyUI/models/loras/ltx/` (create the folder first; see the
+  note in [section 2](#2-pick-a-stack-then-clone)). The example graphs expect
+  these file names, so download and rename (or symlink) them:
+
+  | File name in `loras/ltx/` | HuggingFace source |
+  |---|---|
+  | `ltx-2.3-22b-distilled-lora-384-1.1.safetensors` | `Lightricks/LTX-2.3` (same name) |
+  | `pixar_toon_P1x4r.safetensors` | `vrgamedevgirl84/LTX_2.3_Pixar_Toon_Style_LoRa` → `Pixar_Toon.safetensors` |
+  | `papercut_Pap3rCut0u7.safetensors` | `vrgamedevgirl84/LTX_2.3_Paper_Cut_Out_Style_LoRa` → `PaperCutOutStyle.safetensors` |
+  | `anim90s_9o4n1m.safetensors` | `vrgamedevgirl84/LTX_2.3_90s_Animation_Style_LoRa` → `90sAnimationStyle.safetensors` |
+
+  The suffix in each name is the adapter's trigger word, which the example
+  prompts already start with.
+
+**Photoshop.** The `*_photoshop` workflows are driven from Photoshop by the
+[SD-PPP](https://sdppp.zombee.tech/) 2.0 plugin (Photoshop 2025 / PS 26.0+).
+SD-PPP 2.0 needs no ComfyUI custom node. It lists the workflows saved in
+ComfyUI's workflow library (`ComfyUI/user/default/workflows/`), not templates,
+so open each Photoshop template and save it first, or copy its JSON from
+`example_workflows/` into that folder. In the panel, node titles starting with
+`#` are shown as controls and `.` are hidden.
+
+---
+
+## 7. First run: weights + warmup
 
 - **Weights download automatically** from HuggingFace on first use, into
   `HF_HOME` (default `~/.cache/huggingface`):
   - SDXL → `stabilityai/stable-diffusion-xl-base-1.0`
   - Wan 2.2 → `Wan-AI/Wan2.2-T2V-A14B-Diffusers`
+  - LTX-2.3 → `Lightricks/LTX-2.3`, plus the Gemma text encoder
+    `google/gemma-3-12b-it-qat-q4_0-unquantized` (gated)
 
   If a model's HuggingFace page is gated, accept its license there and
   authenticate once so the download can proceed:
@@ -228,25 +288,33 @@ for the full node reference and the environment-variable table.
   huggingface-cli login
   ```
 - **The first standup is slow.** Initial warmup includes trace capture:
-  ~5–10 min for SDXL, ~15–25 min for Wan 2.2. The node blocks until the server
-  reports healthy — this is expected, not a hang. Watch progress in
-  `~/src/tt-metal/<model>_server_comfy.log`.
+  ~5–10 min for SDXL, ~15 min for LTX-2.3, ~15–25 min for Wan 2.2. The node
+  blocks until the server reports healthy; this is expected, not a hang. Watch
+  progress in `<TT_METAL_DIR>/<model>_server_comfy.log`, which on Stack 2 is
+  `~/src/tt-inference-server/comfyui-media-server/<model>_server_comfy.log`.
+- **A fresh tt-metal checkout compiles its device kernels on first use.** The
+  very first standup from a new checkout adds kernel compilation on top of the
+  warmup, and the log fills with compiler command lines. Their `-Werror` flags
+  and the deprecation notes are not errors. Compiled kernels are cached in
+  `~/.cache/tt-metal-cache`, so later standups skip this.
 - **One model at a time.** Switching `model_type` tears down the running server
   and starts the new one (another warmup).
 
 ---
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
 | `launch_server.sh not found at <path>` | `TT_METAL_DIR` is wrong for your stack. Stack 2: it must be `<tt-inference-server>/comfyui-media-server` (use `launch_subprocess_mode.sh`). Stack 1: it must be the tt-metal repo root, which the sibling layout gives you by default. |
 | `TypeError: fuse_lora() got an unexpected keyword argument 'clip_scale'` | Mixed stacks. The relocated server is paired with a `samt/standalone-media-20260703` checkout; see the table in section 2. |
-| Server never becomes healthy | First Wan 2.2 warmup can take ~25 min; check `<tt-metal>/<model>_server_comfy.log`; raise `TT_SERVER_READY_TIMEOUT` (seconds). |
+| Server never becomes healthy | First Wan 2.2 warmup can take ~25 min; check `<TT_METAL_DIR>/<model>_server_comfy.log`; raise `TT_SERVER_READY_TIMEOUT` (seconds). |
 | `tt-smi not found` | Ensure `tt-smi` is on `PATH` (installed by tt-installer) or set `TT_SMI_BIN`. |
 | `Error: --board is required when --model ltx` | Only when launching the server by hand -- the node always passes it. Add `--board p300x2` (or your board) to `launch_server.sh`. |
 | LTX clip is the wrong size or length | Geometry is pinned when the pipeline is built, so it cannot change per request. Relaunch with `--height 1088 --width 1920 --frames 121`: height and width must be multiples of 64, and `frames - 1` divisible by 8. |
 | Port `:8000` already in use | Set `TT_SERVER_PORT`. The web UI port (`--port`, default 8188) is separate. |
+| Wan workflow reports `VHS_VideoCombine` missing | It is an older copy of the graph. Use the one from `example_workflows/`, which uses core Create Video instead, or install ComfyUI-VideoHelperSuite. |
+| LoRA dropdown is empty | The files are not under `ComfyUI/models/loras/` in the expected subfolder (`wan22/…`, `ltx/`); see section 6. |
 | Device wedged after a crash | `tt-smi -r` to reset, or use the **TT Unload Model** node's board-reset option. |
 
 For the full list of configuration variables and per-node details, see the node

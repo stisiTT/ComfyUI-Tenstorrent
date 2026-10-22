@@ -130,7 +130,7 @@ backstops a kill of any tt-metal server the node left running.
 ### Example: Wan 2.2 text-to-video
 
 ```
-[TT Checkpoint Loader (wan22)] ─model─▶ [TT Wan Sampler] ─samples─▶ [TT VAE Decode] ─▶ [Save / VHS combine]
+[TT Checkpoint Loader (wan22)] ─model─▶ [TT Wan Sampler] ─samples─▶ [TT VAE Decode] ─▶ [Create Video] ─▶ [TT Preview Video / Save Video]
    (optional) └─▶ [TT Wan LoRA Loader] ─▶ TT Wan Sampler
 ```
 
@@ -358,7 +358,7 @@ checkout, or place tt-metal as a sibling of ComfyUI.
 
 **Server never becomes healthy / times out** — first warmup can take up to ~25
 min for Wan 2.2 (trace capture). Watch the server log at
-`<tt-metal>/<model>_server_comfy.log`. Raise `TT_SERVER_READY_TIMEOUT` if needed.
+`<TT_METAL_DIR>/<model>_server_comfy.log`. Raise `TT_SERVER_READY_TIMEOUT` if needed.
 
 **`tt-smi` not found** — ensure `tt-smi` is on `PATH` (installed by
 `tt-installer`) or set `TT_SMI_BIN` to its console script. Used for the board
