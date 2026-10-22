@@ -1,0 +1,590 @@
+{
+  "id": "12a7c10e-382d-448a-a90a-53c9236b2085",
+  "revision": 0,
+  "last_node_id": 32,
+  "last_link_id": 10,
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.9743585500000045,
+      "offset": [
+        -407.5840231696774,
+        -593.70512312164
+      ]
+    },
+    "frontendVersion": "1.45.15"
+  },
+  "version": 0.4,
+  "nodes": [
+    {
+      "id": 25,
+      "type": "TT_CheckpointLoader",
+      "pos": [
+        50,
+        900
+      ],
+      "size": [
+        270,
+        146
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "model_type",
+          "name": "model_type",
+          "type": "COMBO",
+          "widget": {
+            "name": "model_type"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "board",
+          "name": "board",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "board"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "server_url",
+          "name": "server_url",
+          "shape": 7,
+          "type": "STRING",
+          "widget": {
+            "name": "server_url"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "model",
+          "name": "model",
+          "type": "MODEL",
+          "links": [
+            1,
+            9
+          ]
+        },
+        {
+          "localized_name": "clip",
+          "name": "clip",
+          "type": "CLIP",
+          "links": [
+            2,
+            3
+          ]
+        },
+        {
+          "localized_name": "vae",
+          "name": "vae",
+          "type": "VAE",
+          "links": [
+            7
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TT_CheckpointLoader"
+      },
+      "widgets_values": [
+        "wan22",
+        "p300x2",
+        ""
+      ]
+    },
+    {
+      "id": 26,
+      "type": "TT_UnloadModel",
+      "pos": [
+        2155.643111930406,
+        920
+      ],
+      "size": [
+        270,
+        58
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 4,
+      "inputs": [
+        {
+          "localized_name": "model",
+          "name": "model",
+          "type": "MODEL",
+          "link": 1
+        },
+        {
+          "localized_name": "reset_board",
+          "name": "reset_board",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "reset_board"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "TT_UnloadModel"
+      },
+      "widgets_values": [
+        true
+      ]
+    },
+    {
+      "id": 27,
+      "type": "CLIPTextEncode",
+      "pos": [
+        450,
+        880
+      ],
+      "size": [
+        310.5,
+        88
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "clip",
+          "name": "clip",
+          "type": "CLIP",
+          "link": 2
+        },
+        {
+          "localized_name": "text",
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "CONDITIONING",
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            4
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.25.0",
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "a cinematic shot of a cat in the city at night"
+      ]
+    },
+    {
+      "id": 28,
+      "type": "CLIPTextEncode",
+      "pos": [
+        450,
+        1040
+      ],
+      "size": [
+        310.5,
+        88
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "clip",
+          "name": "clip",
+          "type": "CLIP",
+          "link": 3
+        },
+        {
+          "localized_name": "text",
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "CONDITIONING",
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            5
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.25.0",
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "morphing, warping, distortion, flickering, jittering, face deformation, body distortion, inconsistent lighting, blurry, low quality, pixelated, noisy, sudden changes, teleporting, disappearing objects, subtitles, text overlay, logos, extra fingers, malformed limbs, talking, mouth moving, still picture, cluttered background\n"
+      ]
+    },
+    {
+      "id": 29,
+      "type": "TT_WanSampler",
+      "pos": [
+        840,
+        880
+      ],
+      "size": [
+        300,
+        292
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "model",
+          "name": "model",
+          "type": "MODEL",
+          "link": 9
+        },
+        {
+          "localized_name": "positive",
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 4
+        },
+        {
+          "localized_name": "negative",
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 5
+        },
+        {
+          "localized_name": "num_inference_steps",
+          "name": "num_inference_steps",
+          "type": "INT",
+          "widget": {
+            "name": "num_inference_steps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "guidance_scale",
+          "name": "guidance_scale",
+          "type": "FLOAT",
+          "widget": {
+            "name": "guidance_scale"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "guidance_scale_2",
+          "name": "guidance_scale_2",
+          "type": "FLOAT",
+          "widget": {
+            "name": "guidance_scale_2"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "flow_shift",
+          "name": "flow_shift",
+          "type": "FLOAT",
+          "widget": {
+            "name": "flow_shift"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "boundary_ratio",
+          "name": "boundary_ratio",
+          "type": "FLOAT",
+          "widget": {
+            "name": "boundary_ratio"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "seed",
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "samples",
+          "name": "samples",
+          "type": "LATENT",
+          "links": [
+            6
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TT_WanSampler"
+      },
+      "widgets_values": [
+        30,
+        4,
+        4,
+        12,
+        0.875,
+        133489143424587,
+        "fixed"
+      ]
+    },
+    {
+      "id": 30,
+      "type": "TT_VAEDecode",
+      "pos": [
+        1190,
+        920
+      ],
+      "size": [
+        180,
+        46
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "samples",
+          "name": "samples",
+          "type": "LATENT",
+          "link": 6
+        },
+        {
+          "localized_name": "vae",
+          "name": "vae",
+          "type": "VAE",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            8
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TT_VAEDecode"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 31,
+      "type": "CreateVideo",
+      "pos": [
+        1435.643111930406,
+        893.3523666416229
+      ],
+      "size": [
+        270,
+        82
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "link": 8
+        },
+        {
+          "localized_name": "audio",
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "VIDEO",
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            10
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CreateVideo"
+      },
+      "widgets_values": [
+        24
+      ]
+    },
+    {
+      "id": 32,
+      "type": "TT_PreviewVideo",
+      "pos": [
+        1735.643111930406,
+        893.3523666416229
+      ],
+      "size": [
+        380,
+        420
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "video",
+          "name": "video",
+          "type": "VIDEO",
+          "link": 10
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "TT_PreviewVideo"
+      },
+      "widgets_values": []
+    }
+  ],
+  "links": [
+    [
+      1,
+      25,
+      0,
+      26,
+      0,
+      "MODEL"
+    ],
+    [
+      2,
+      25,
+      1,
+      27,
+      0,
+      "CLIP"
+    ],
+    [
+      3,
+      25,
+      1,
+      28,
+      0,
+      "CLIP"
+    ],
+    [
+      4,
+      27,
+      0,
+      29,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      5,
+      28,
+      0,
+      29,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      6,
+      29,
+      0,
+      30,
+      0,
+      "LATENT"
+    ],
+    [
+      7,
+      25,
+      2,
+      30,
+      1,
+      "VAE"
+    ],
+    [
+      8,
+      30,
+      0,
+      31,
+      0,
+      "IMAGE"
+    ],
+    [
+      9,
+      25,
+      0,
+      29,
+      0,
+      "MODEL"
+    ],
+    [
+      10,
+      31,
+      0,
+      32,
+      0,
+      "VIDEO"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 4,
+      "title": "Wan T2V (staged)",
+      "bounding": [
+        20,
+        840,
+        1771,
+        440
+      ],
+      "color": "#5b9a78",
+      "flags": {}
+    },
+    {
+      "id": 8,
+      "title": "Wan Positive / Negative",
+      "bounding": [
+        420,
+        860,
+        370,
+        288
+      ],
+      "color": "#3f7a5f",
+      "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "Shutdown Wan",
+      "bounding": [
+        1790,
+        890,
+        330,
+        118
+      ],
+      "color": "#5a5a5a",
+      "flags": {}
+    }
+  ]
+}
