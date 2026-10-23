@@ -16,7 +16,7 @@ def get_model_config(model_type: str) -> Dict[str, Any]:
     Get model configuration for a given model type.
 
     Args:
-        model_type: One of 'sdxl', 'sd35', 'sd14', 'wan22', 'ltx'
+        model_type: One of 'sdxl', 'sd35', 'sd14', 'wan22', 'ltx', 'ltx_pro', 'h3'
 
     Returns:
         Configuration dictionary
@@ -86,6 +86,18 @@ def get_model_config(model_type: str) -> Dict[str, Any]:
             "vae_latent_channels": 128,
             "text_encoder_hidden_size": 3840,
             "model_size_gb": 22.0,
+        },
+        # MiniMax-H3: 24-channel latents at 16x spatial / 4x temporal compression,
+        # conditioned on a Qwen3-VL-32B hidden state. As with LTX, the CLIP handle
+        # only carries the prompt and the VAE handle is unused.
+        "h3": {
+            "latent_channels": 24,
+            "unet_in_channels": 24,
+            "clip_dim": 5120,
+            "vae_scale_factor": 16,
+            "vae_latent_channels": 24,
+            "text_encoder_hidden_size": 5120,
+            "model_size_gb": 66.0,
         },
     }
 

@@ -276,12 +276,13 @@ class TT_CheckpointLoader:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "model_type": (["sdxl", "wan22", "ltx", "ltx_pro"], {
+                "model_type": (["sdxl", "wan22", "ltx", "ltx_pro", "h3"], {
                     "default": "sdxl",
                     "tooltip": "Model to stand up. sdxl -> image graph; wan22 -> video graph "
                     "(TT_WanSampler or TT_TextToVideo); ltx -> audio+video graph (TT_LTXVideo); "
                     "ltx_pro -> guided audio+video graph (TT_LTXVideoPro), slower but takes CFG "
-                    "and a live negative prompt"
+                    "and a live negative prompt; h3 -> MiniMax-H3 audio+video graph (TT_H3Video), "
+                    "optionally from a first and/or last frame"
                 }),
             },
             "optional": {
@@ -1073,6 +1074,117 @@ class TT_LTXVideo:
 
         # VideoFromFile accepts a file-like object, so the clip never touches disk
         # here and no shared filesystem with the server is assumed.
+        from comfy_api.latest import InputImpl
+
+        return (InputImpl.VideoFromFile(io.BytesIO(video_bytes)),)
+
+
+# MiniMax-H3 Turbo runs one denoise pass of 5 steps (the 4-step adapter's grid).
+_H3_TOTAL_STEPS = 5
+_H3_SECTION_LABELS = {
+    "encoder": "Encoding prompt",
+    "vae_encode": "Encoding keyframes",
+    "denoising": "Denoising",
+    "vae": "Decoding video",
+    "audio": "Decoding audio",
+}
+_H3_ASPECT_RATIOS = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"]
+
+
+def _image_to_b64png(image) -> str:
+    """First frame of a ComfyUI IMAGE batch ([B, H, W, C] floats in 0..1) as base64 PNG."""
+    import base64
+
+    import numpy as np
+    from PIL import Image
+
+    arr = (image[0].clamp(0, 1).mul(255).round().byte().cpu().numpy()).astype(np.uint8)
+    buf = io.BytesIO()
+    Image.fromarray(arr).save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+class TT_H3Video:
+    """
+    Generate a synchronized audio+video clip with MiniMax-H3 on the tt-metal server (h3).
+
+    Text to video by default. Connect a first and/or last frame to run
+    first/last-frame mode, where the clip starts and/or ends on those images and
+    takes its shape from the first one (aspect_ratio is then ignored).
+
+    The server runs the lightx2v 4-step Turbo adapter, so the step count is fixed.
+    Unlike LTX, length and aspect ratio are chosen per run. Output is 768p on the
+    short side, 24 fps, with stereo audio, as a native VIDEO for Save Video.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "model": ("MODEL", {"tooltip": "h3 MODEL from TT_CheckpointLoader"}),
+                "positive": ("CONDITIONING", {"tooltip": "Prompt (from CLIP Text Encode)"}),
+                "duration": ("INT", {
+                    "default": 5, "min": 4, "max": 15,
+                    "tooltip": "Clip length in seconds. Longer clips take proportionally longer.",
+                }),
+                "aspect_ratio": (_H3_ASPECT_RATIOS, {
+                    "default": "16:9",
+                    "tooltip": "Output shape. Ignored when a first or last frame is connected.",
+                }),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "tooltip": "Random seed"}),
+            },
+            "optional": {
+                "first_frame": ("IMAGE", {"tooltip": "Optional image the clip starts on"}),
+                "last_frame": ("IMAGE", {"tooltip": "Optional image the clip ends on"}),
+            },
+            "hidden": {"unique_id": "UNIQUE_ID"},
+        }
+
+    RETURN_TYPES = ("VIDEO",)
+    RETURN_NAMES = ("video",)
+    OUTPUT_TOOLTIPS = ("Muxed audio+video clip (h264 + AAC)",)
+    FUNCTION = "generate"
+    CATEGORY = "Tenstorrent/video"
+    DESCRIPTION = (
+        "Generate a synchronized audio+video clip with MiniMax-H3 on the tt-metal server.\n\n"
+        "Connect a first and/or last frame to animate between images; otherwise it is text to video."
+    )
+
+    def generate(self, model, positive, duration, aspect_ratio, seed, first_frame=None, last_frame=None, unique_id=None) -> Tuple:
+        if not hasattr(model, "client"):
+            raise RuntimeError("TT_H3Video requires a Tenstorrent MODEL from TT_CheckpointLoader.")
+        if getattr(model, "model_type", None) != "h3":
+            raise RuntimeError(
+                f"TT_H3Video requires an h3 model (got '{getattr(model, 'model_type', None)}'). "
+                "Select 'h3' in TT_CheckpointLoader."
+            )
+        positive_text = _extract_prompt_text(positive)
+        if not positive_text or not positive_text.strip():
+            raise RuntimeError(
+                "TT_H3Video could not read a prompt from the positive conditioning. "
+                "Connect a CLIP Text Encode node fed by the CLIP output of TT_CheckpointLoader."
+            )
+
+        progress_callback = build_denoise_progress_callback(
+            _H3_TOTAL_STEPS, unique_id, section_labels=_H3_SECTION_LABELS
+        )
+        _ensure_own_server(model, "TT_H3Video")
+
+        av_params = {
+            "prompt": positive_text,
+            "seed": int(seed),
+            "duration_s": int(duration),
+            "aspect_ratio": aspect_ratio,
+        }
+        if first_frame is not None:
+            av_params["first_image_b64"] = _image_to_b64png(first_frame)
+        if last_frame is not None:
+            av_params["last_image_b64"] = _image_to_b64png(last_frame)
+        mode = "first/last frame" if (first_frame is not None or last_frame is not None) else "text"
+        logger.info(f"TT_H3Video: {mode}, {duration}s, {aspect_ratio}, prompt='{positive_text[:80]}', seed={seed}")
+        video_bytes = model.client.generate_av(progress_callback=progress_callback, **av_params)
+        logger.info(f"TT_H3Video: received {len(video_bytes)} bytes of MP4")
+
         from comfy_api.latest import InputImpl
 
         return (InputImpl.VideoFromFile(io.BytesIO(video_bytes)),)

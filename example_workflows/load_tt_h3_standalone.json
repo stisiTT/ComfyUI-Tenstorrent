@@ -1,0 +1,379 @@
+{
+  "id": "223ed551-09ea-49ce-9a03-7e262f178a77",
+  "revision": 0,
+  "last_node_id": 5,
+  "last_link_id": 5,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "TT_CheckpointLoader",
+      "pos": [
+        40,
+        100
+      ],
+      "size": [
+        300,
+        106
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "model_type",
+          "name": "model_type",
+          "type": "COMBO",
+          "widget": {
+            "name": "model_type"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "board",
+          "name": "board",
+          "type": "STRING",
+          "widget": {
+            "name": "board"
+          },
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "server_url",
+          "name": "server_url",
+          "type": "STRING",
+          "widget": {
+            "name": "server_url"
+          },
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "model",
+          "name": "model",
+          "type": "MODEL",
+          "links": [
+            1
+          ]
+        },
+        {
+          "localized_name": "clip",
+          "name": "clip",
+          "type": "CLIP",
+          "links": [
+            2
+          ]
+        },
+        {
+          "localized_name": "vae",
+          "name": "vae",
+          "type": "VAE",
+          "links": null
+        }
+      ],
+      "widgets_values": [
+        "h3",
+        "p300x2",
+        ""
+      ],
+      "properties": {
+        "Node name for S&R": "TT_CheckpointLoader"
+      }
+    },
+    {
+      "id": 2,
+      "type": "CLIPTextEncode",
+      "pos": [
+        400,
+        40
+      ],
+      "size": [
+        400,
+        180
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "clip",
+          "name": "clip",
+          "type": "CLIP",
+          "link": 2
+        },
+        {
+          "localized_name": "text",
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "CONDITIONING",
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            3
+          ]
+        }
+      ],
+      "widgets_values": [
+        "A lighthouse stands on a rocky cliff at sunset. Waves crash against the rocks below and throw white spray into the golden light. The camera drifts slowly toward the lighthouse. Waves roar against the cliff and gulls cry overhead."
+      ],
+      "title": "#Prompt",
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      }
+    },
+    {
+      "id": 3,
+      "type": "TT_H3Video",
+      "pos": [
+        860,
+        100
+      ],
+      "size": [
+        330,
+        200
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "model",
+          "name": "model",
+          "type": "MODEL",
+          "link": 1
+        },
+        {
+          "localized_name": "positive",
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 3
+        },
+        {
+          "localized_name": "first_frame",
+          "name": "first_frame",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "last_frame",
+          "name": "last_frame",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "duration",
+          "name": "duration",
+          "type": "INT",
+          "widget": {
+            "name": "duration"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "aspect_ratio",
+          "name": "aspect_ratio",
+          "type": "COMBO",
+          "widget": {
+            "name": "aspect_ratio"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "seed",
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "video",
+          "name": "video",
+          "type": "VIDEO",
+          "links": [
+            4,
+            5
+          ]
+        }
+      ],
+      "widgets_values": [
+        5,
+        "16:9",
+        7,
+        "fixed"
+      ],
+      "properties": {
+        "Node name for S&R": "TT_H3Video"
+      }
+    },
+    {
+      "id": 4,
+      "type": "TT_PreviewVideo",
+      "pos": [
+        1240,
+        100
+      ],
+      "size": [
+        380,
+        420
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "video",
+          "name": "video",
+          "type": "VIDEO",
+          "link": 4
+        }
+      ],
+      "outputs": [],
+      "widgets_values": [],
+      "properties": {
+        "Node name for S&R": "TT_PreviewVideo"
+      }
+    },
+    {
+      "id": 5,
+      "type": "SaveVideo",
+      "pos": [
+        1240,
+        560
+      ],
+      "size": [
+        360,
+        140
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 4,
+      "inputs": [
+        {
+          "localized_name": "video",
+          "name": "video",
+          "type": "VIDEO",
+          "link": 5
+        },
+        {
+          "localized_name": "filename_prefix",
+          "name": "filename_prefix",
+          "type": "STRING",
+          "widget": {
+            "name": "filename_prefix"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "format",
+          "name": "format",
+          "type": "COMBO",
+          "widget": {
+            "name": "format"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "codec",
+          "name": "codec",
+          "type": "COMBO",
+          "widget": {
+            "name": "codec"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [],
+      "widgets_values": [
+        "video/tt_h3",
+        "auto",
+        "auto"
+      ],
+      "properties": {
+        "Node name for S&R": "SaveVideo"
+      }
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      3,
+      0,
+      "MODEL"
+    ],
+    [
+      2,
+      1,
+      1,
+      2,
+      0,
+      "CLIP"
+    ],
+    [
+      3,
+      2,
+      0,
+      3,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      4,
+      3,
+      0,
+      4,
+      0,
+      "VIDEO"
+    ],
+    [
+      5,
+      3,
+      0,
+      5,
+      0,
+      "VIDEO"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "MiniMax-H3 Turbo: text to video + audio, 5 steps",
+      "bounding": [
+        20,
+        20,
+        1620,
+        700
+      ],
+      "color": "#5b7a9a",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.8,
+      "offset": [
+        0,
+        0
+      ]
+    }
+  },
+  "version": 0.4
+}

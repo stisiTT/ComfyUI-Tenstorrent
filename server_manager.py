@@ -40,6 +40,7 @@ MODEL_BOARDS = {
     "wan22": os.getenv("TT_WAN22_BOARD", "p300x2"),
     "ltx": os.getenv("TT_LTX_BOARD", "p300x2"),
     "ltx_pro": os.getenv("TT_LTX_PRO_BOARD", "p300x2"),
+    "h3": os.getenv("TT_H3_BOARD", "p300x2"),
 }
 
 # Substrings expected in the /health "model" label for each model key. A token
@@ -53,6 +54,7 @@ _MODEL_LABEL_HINTS = {
     "sd35": "sd3",
     "ltx": ("ltx", "!pro"),
     "ltx_pro": ("ltx", "pro"),
+    "h3": "minimax-h3",
 }
 
 # Default to the tt-metal checkout sitting next to this ComfyUI repo (the
