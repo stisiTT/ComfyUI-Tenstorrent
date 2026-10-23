@@ -9,9 +9,10 @@ The TT_CheckpointLoader node uses this to stand up the tt-metal server on demand
 based on the selected model, instead of requiring the user to launch it manually.
 
 Design notes:
-- We spawn ``tt-metal/launch_server.sh`` as a subprocess. That script activates
-  tt-metal's own ``python_env``, so the server runs with the correct interpreter
-  and there is NO cross-venv / NumPy ABI contamination with ComfyUI.
+- We spawn ``media_server/launch_server.sh`` (bundled in this package) as a
+  subprocess. That script activates the tt-metal checkout's own ``python_env``,
+  so the server runs with the correct interpreter and there is NO cross-venv /
+  NumPy ABI contamination with ComfyUI.
 - The server is single-model. Selecting a different model stops the running
   server and starts a new one (multi-minute warmup each switch).
 - The child is started in its own session (setsid) so we can signal the whole
@@ -57,13 +58,22 @@ _MODEL_LABEL_HINTS = {
     "h3": "minimax-h3",
 }
 
-# Default to the tt-metal checkout sitting next to this ComfyUI repo (the
-# documented sibling layout: <parent>/ComfyUI and <parent>/tt-metal). Override
-# with TT_METAL_DIR if it lives elsewhere. __file__ is
-# <ComfyUI>/custom_nodes/ComfyUI-Tenstorrent/server_manager.py, so three dirnames
-# up is the ComfyUI root.
-_COMFYUI_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-TT_METAL_DIR = os.getenv("TT_METAL_DIR", os.path.join(os.path.dirname(_COMFYUI_ROOT), "tt-metal"))
+# __file__ is <ComfyUI>/custom_nodes/ComfyUI-Tenstorrent/server_manager.py, so
+# three dirnames up is the ComfyUI root.
+_PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
+_COMFYUI_ROOT = os.path.dirname(os.path.dirname(_PACKAGE_DIR))
+
+# The media server ships in this package. TT_METAL_DIR is the variable's old
+# name, from when the server lived in a tt-metal or tt-inference-server checkout.
+TT_SERVER_DIR = (
+    os.getenv("TT_SERVER_DIR") or os.getenv("TT_METAL_DIR") or os.path.join(_PACKAGE_DIR, "media_server")
+)
+if not os.getenv("TT_SERVER_DIR") and os.getenv("TT_METAL_DIR"):
+    logger.warning("TT_METAL_DIR is deprecated; set TT_SERVER_DIR instead (using %s)", TT_SERVER_DIR)
+
+# The built tt-metal checkout the server imports ttnn from: the documented
+# sibling layout, <parent>/ComfyUI next to <parent>/tt-metal.
+TT_METAL_HOME = os.getenv("TT_METAL_HOME") or os.path.join(os.path.dirname(_COMFYUI_ROOT), "tt-metal")
 DEFAULT_HOST = os.getenv("TT_SERVER_HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.getenv("TT_SERVER_PORT", "8000"))
 PID_FILE = os.getenv("TT_SERVER_PID_FILE", "/tmp/tt_comfy_server.pid")
@@ -160,7 +170,7 @@ class _ServerManager:
         return True
 
     def _log_path(self, model: str) -> str:
-        return os.path.join(TT_METAL_DIR, f"{model}_server_comfy.log")
+        return os.path.join(TT_SERVER_DIR, f"{model}_server_comfy.log")
 
     def _write_pid_file(self):
         try:
@@ -459,9 +469,14 @@ class _ServerManager:
             self._last_teardown_wedged = self._last_teardown_wedged or forced or (not released)
 
     def _start(self, model: str, board: str):
-        script = os.path.join(TT_METAL_DIR, "launch_server.sh")
+        script = os.path.join(TT_SERVER_DIR, "launch_server.sh")
         if not os.path.isfile(script):
-            raise RuntimeError(f"launch_server.sh not found at {script} (set TT_METAL_DIR)")
+            raise RuntimeError(f"launch_server.sh not found at {script} (set TT_SERVER_DIR)")
+        if not os.path.isfile(os.path.join(TT_METAL_HOME, "python_env", "bin", "activate")):
+            raise RuntimeError(
+                f"No built tt-metal at {TT_METAL_HOME} (python_env missing). Build tt-metal there "
+                "(see INSTALL.md) or set TT_METAL_HOME to your built checkout."
+            )
 
         # Make sure no stale process holds the boards and reset them if the last
         # teardown left them wedged, so this launch starts from a clean device.
@@ -475,11 +490,15 @@ class _ServerManager:
             "--port", str(self._port),
         ]
         log_path = self._log_path(model)
-        logger.info(f"Starting tt-metal server: {' '.join(cmd)} (cwd={TT_METAL_DIR}, log={log_path})")
+        logger.info(
+            f"Starting tt-metal server: {' '.join(cmd)} "
+            f"(cwd={TT_SERVER_DIR}, TT_METAL_HOME={TT_METAL_HOME}, log={log_path})"
+        )
         log_file = open(log_path, "w")
         self._proc = subprocess.Popen(
             cmd,
-            cwd=TT_METAL_DIR,
+            cwd=TT_SERVER_DIR,
+            env={**os.environ, "TT_METAL_HOME": TT_METAL_HOME},
             stdout=log_file,
             stderr=subprocess.STDOUT,
             start_new_session=True,  # own process group for clean killpg
