@@ -1,0 +1,311 @@
+{
+  "id": "c859488e-2a0d-4803-a8c4-d545c7389137",
+  "revision": 0,
+  "last_node_id": 5,
+  "last_link_id": 5,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "TT_CheckpointLoader",
+      "pos": [
+        40,
+        100
+      ],
+      "size": [
+        300,
+        106
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "model_type",
+          "name": "model_type",
+          "type": "COMBO",
+          "widget": {
+            "name": "model_type"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "board",
+          "name": "board",
+          "type": "STRING",
+          "widget": {
+            "name": "board"
+          },
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "server_url",
+          "name": "server_url",
+          "type": "STRING",
+          "widget": {
+            "name": "server_url"
+          },
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "model",
+          "name": "model",
+          "type": "MODEL",
+          "links": [
+            1
+          ]
+        },
+        {
+          "localized_name": "clip",
+          "name": "clip",
+          "type": "CLIP",
+          "links": [
+            2
+          ]
+        },
+        {
+          "localized_name": "vae",
+          "name": "vae",
+          "type": "VAE",
+          "links": null
+        }
+      ],
+      "widgets_values": [
+        "h3",
+        "p300x2",
+        ""
+      ],
+      "properties": {
+        "Node name for S&R": "TT_CheckpointLoader"
+      }
+    },
+    {
+      "id": 2,
+      "type": "CLIPTextEncode",
+      "pos": [
+        400,
+        40
+      ],
+      "size": [
+        400,
+        180
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "clip",
+          "name": "clip",
+          "type": "CLIP",
+          "link": 2
+        },
+        {
+          "localized_name": "text",
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "CONDITIONING",
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            3
+          ]
+        }
+      ],
+      "widgets_values": [
+        "integrated_multimodal_description: [Shot 1] Live-action, cinematic fantasy, a wide low-angle shot frames a majestic stone castle on a green hillside under a dramatic sky at golden hour, its tall towers and banners catching the warm light, with an open grassy courtyard in the foreground. A fierce white dragon with pink highlights along its horns, wing membranes and the edges of its scales descends from the upper right, its huge wings beating powerfully and stirring the grass. The camera tilts down with small amplitude at slow speed as the dragon lands heavily in front of the castle gate, its clawed feet striking the ground and throwing up dust and loose grass. It folds its wings halfway, lowers its head, and fixes its glowing pink eyes on the camera. The dragon rears back, spreads its wings wide, opens its jaws to reveal rows of sharp teeth, and lets out a thunderous, ground-shaking roar as the banners on the towers whip in the blast of air. The camera shakes slightly during the roar.\n\noverall_soundscape: Strong gusts of wind, deep rhythmic whooshing wingbeats growing louder as the dragon descends, a heavy ground-shaking thud on landing with scattering pebbles, a low rumbling growl, then a long, thunderous, echoing roar that reverberates off the castle walls, with flags snapping in the wind.\n\nnon_diegetic_music: An epic orchestral score with deep brass and pounding drums that swells as the dragon lands and peaks with the roar."
+      ],
+      "title": "#Prompt",
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      }
+    },
+    {
+      "id": 3,
+      "type": "TT_H3Video",
+      "pos": [
+        860,
+        100
+      ],
+      "size": [
+        330,
+        200
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "model",
+          "name": "model",
+          "type": "MODEL",
+          "link": 1
+        },
+        {
+          "localized_name": "positive",
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 3
+        },
+        {
+          "localized_name": "first_frame",
+          "name": "first_frame",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "last_frame",
+          "name": "last_frame",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "duration",
+          "name": "duration",
+          "type": "INT",
+          "widget": {
+            "name": "duration"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "aspect_ratio",
+          "name": "aspect_ratio",
+          "type": "COMBO",
+          "widget": {
+            "name": "aspect_ratio"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "seed",
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "video",
+          "name": "video",
+          "type": "VIDEO",
+          "links": [
+            4
+          ]
+        }
+      ],
+      "widgets_values": [
+        6,
+        "16:9",
+        777,
+        "fixed"
+      ],
+      "properties": {
+        "Node name for S&R": "TT_H3Video"
+      }
+    },
+    {
+      "id": 4,
+      "type": "TT_PreviewVideo",
+      "pos": [
+        1240,
+        100
+      ],
+      "size": [
+        380,
+        420
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "video",
+          "name": "video",
+          "type": "VIDEO",
+          "link": 4
+        }
+      ],
+      "outputs": [],
+      "widgets_values": [],
+      "properties": {
+        "Node name for S&R": "TT_PreviewVideo"
+      }
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      3,
+      0,
+      "MODEL"
+    ],
+    [
+      2,
+      1,
+      1,
+      2,
+      0,
+      "CLIP"
+    ],
+    [
+      3,
+      2,
+      0,
+      3,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      4,
+      3,
+      0,
+      4,
+      0,
+      "VIDEO"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "MiniMax-H3: white dragon lands at a castle and roars (6 s, 16:9)",
+      "bounding": [
+        20,
+        20,
+        1620,
+        560
+      ],
+      "color": "#5b7a9a",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.8,
+      "offset": [
+        0,
+        0
+      ]
+    }
+  },
+  "version": 0.4
+}

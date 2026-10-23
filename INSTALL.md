@@ -238,6 +238,7 @@ Opening a template gives you an unsaved copy; save it to keep your edits.
 | `load_tt_h3_standalone` | MiniMax-H3 text to video | nothing extra |
 | `load_tt_h3_first_frame` | MiniMax-H3 image to video | a still image, uploaded in the Load Image node (an SDXL render works well) |
 | `tt_h3_cat_sunbeam` | MiniMax-H3 text to video | nothing extra; a 6 s showcase prompt in the guide format H3 was trained on (description, soundscape, music) |
+| `tt_h3_dragon_castle` | MiniMax-H3 text to video | nothing extra; a 6 s showcase with a landing, a roar and an orchestral score |
 
 Video graphs end in core **Create Video** → **TT Preview Video**, which plays
 the clip in the graph without writing a file. To keep the clip, swap in core
