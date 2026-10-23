@@ -46,10 +46,9 @@ echo "Logging to: $LOG_FILE"
 #   override the model's default clip shape. LTX pins geometry when the pipeline is built, so
 #   this is the only way to change it; e.g. --height 1088 --width 1920 --frames 121.
 #
-#   TT_METAL_HOME — a SEPARATE, already-built tt-metal checkout. Since this server
-#                   was relocated out of the tt-metal root, it no longer lives
-#                   inside tt-metal; TT_METAL_HOME MUST come from the environment
-#                   (set by the Docker image, or exported for local dev, e.g.
+#   TT_METAL_HOME — a SEPARATE, already-built tt-metal checkout. This server
+#                   does not live inside tt-metal, so TT_METAL_HOME MUST come
+#                   from the environment (the nodes export it; by hand, e.g.
 #                   `TT_METAL_HOME=/home/you/tt-metal ./launch_server.sh ...`).
 # ---------------------------------------------------------------------------
 SERVER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
