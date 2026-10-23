@@ -1,8 +1,9 @@
 # Installing ComfyUI + Tenstorrent
 
 This guide sets up ComfyUI with the Tenstorrent custom nodes, which run **Stable
-Diffusion XL** and **SD 3.5** (image), **Wan 2.2** and **LTX-2.3** (video, LTX-2.3
-with audio) on Tenstorrent hardware via a tt-metal inference server.
+Diffusion XL** and **SD 3.5** (image), **Wan 2.2**, **LTX-2.3** and **MiniMax-H3**
+(video, the last two with audio) on Tenstorrent hardware via a tt-metal
+inference server.
 
 However many repos are involved, it is always **two separate Python
 environments** talking over a local HTTP socket. That isolation is intentional:
@@ -43,10 +44,11 @@ the tt-metal server for you. You do not launch the server by hand.
   | SDXL    | `p150` (1 chip; uses up to 4) | image generation |
   | Wan 2.2 | `p300x2` (QuietBox 2)  | text-to-video |
   | LTX-2.3 | `p300x2` (QuietBox 2)  | text-to-video with audio |
+  | MiniMax-H3 | `p300x2` (QuietBox 2) | text- or image-to-video with audio |
 
   Other boards can be selected with `TT_SDXL_BOARD` / `TT_WAN22_BOARD` /
-  `TT_LTX_BOARD` or the node's `board` input, but the ones above are the
-  tested paths.
+  `TT_LTX_BOARD` / `TT_H3_BOARD` or the node's `board` input, but the ones
+  above are the tested paths.
 - **OS / tooling:** Ubuntu 24.04, **Python 3.12**, `git`, and
   [`uv`](https://github.com/astral-sh/uv) (used by tt-metal's venv script):
   ```bash
@@ -66,7 +68,7 @@ lives**; the nodes behave identically on both.
 |---|---|---|---|
 | **Stack 1** (legacy) | tt-metal repo root | `samt/standalone-media-20260703` @ `ce05994325a` | `(lora_scale_unet, lora_scale_clip)` |
 | **Stack 2** (current) | tt-inference-server `comfyui-media-server/` @ `6a4085df0` | `stisi/sdxl-per-component-lora` | `(lora_scale, clip_scale)` |
-| **Stack 2 + LTX-2.3** | tt-inference-server `ltx-runner` | `stisi/comfyui_20260916_ltx23` | `(lora_scale, clip_scale)` |
+| **Stack 2 + LTX-2.3 / MiniMax-H3** | tt-inference-server `ltx-runner` | `stisi/comfyui_20261023_main` | `(lora_scale, clip_scale)` |
 
 **This guide follows Stack 2**, the relocated server. That is where the work is
 headed and what the container path is built from.
@@ -79,9 +81,10 @@ headed and what the container path is built from.
 > way the HTTP contract is unchanged: the request body always carries
 > `lora_scale_unet` / `lora_scale_clip`.
 
-> **For LTX-2.3 use the third row.** Its two branches are descendants of Stack 2's,
-> so the `fuse_lora` rule above still holds, but the LTX servers (`--model ltx`,
-> `--model ltx_pro`) and the LTX LoRA node exist only there. LTX adapters go in
+> **For LTX-2.3 and MiniMax-H3 use the third row.** Its two branches are
+> descendants of Stack 2's, so the `fuse_lora` rule above still holds, but the
+> LTX and H3 servers (`--model ltx`, `--model ltx_pro`, `--model h3`) and the
+> LTX LoRA node exist only there. LTX adapters go in
 > `models/loras/ltx/`; that directory must exist, or the node's dropdown falls
 > back to listing adapters for other models, none of which can bind.
 
@@ -122,7 +125,7 @@ open. Check out that branch, init submodules, then build.
 
 ```bash
 cd ~/src/tt-metal
-git checkout stisi/comfyui_20260916_ltx23      # LTX-2.3; descends from PR #47509's branch
+git checkout stisi/comfyui_20261023_main       # LTX-2.3 + MiniMax-H3; PR #47509's branch merged with main
 git submodule update --init --recursive
 
 # System build dependencies (uses sudo; one-time).
@@ -139,7 +142,7 @@ Then put the server repo on its branch. Nothing to build here, it is Python only
 
 ```bash
 cd ~/src/tt-inference-server
-git checkout ltx-runner                        # comfyui-media-server/ with the LTX servers
+git checkout ltx-runner                        # comfyui-media-server/ with the LTX and H3 servers
 ```
 
 > **Why a branch and not `main`?** PR #47509 is on the critical path and has not
@@ -208,6 +211,7 @@ build a graph starting from **TT Checkpoint Loader**, and pick a model:
 - `sdxl` → image graph: `TT KSampler` → `TT VAE Decode` → Save Image
 - `wan22` → video graph: `TT Wan Sampler` → `TT VAE Decode` → Create Video
 - `ltx` / `ltx_pro` → `TT LTX Video` / `TT LTX Video Pro` → `TT Preview Video`
+- `h3` → `TT H3 Video` (optionally fed a first and/or last frame) → `TT Preview Video`
 
 Or start from one of the example workflows in the next section. See
 [`README.md`](README.md) for the full node reference and the
@@ -231,6 +235,8 @@ Opening a template gives you an unsaved copy; save it to keep your edits.
 | `load_tt_wan_standalone_lora` | Wan 2.2 + Lightning | Wan LoRA files (below) |
 | `load_tt_ltx_standalone` | LTX-2.3 | nothing extra for the distilled path |
 | `load_tt_ltx_matrix`, `load_tt_ltx_lora_gallery` | LTX-2.3 + style LoRAs | LTX LoRA files (below) |
+| `load_tt_h3_standalone` | MiniMax-H3 text to video | nothing extra |
+| `load_tt_h3_first_frame` | MiniMax-H3 image to video | a still image, uploaded in the Load Image node (an SDXL render works well) |
 
 Video graphs end in core **Create Video** → **TT Preview Video**, which plays
 the clip in the graph without writing a file. To keep the clip, swap in core
@@ -278,6 +284,18 @@ so open each Photoshop template and save it first, or copy its JSON from
   - Wan 2.2 → `Wan-AI/Wan2.2-T2V-A14B-Diffusers`
   - LTX-2.3 → `Lightricks/LTX-2.3`, plus the Gemma text encoder
     `google/gemma-3-12b-it-qat-q4_0-unquantized` (gated)
+  - MiniMax-H3 → `MiniMaxAI/MiniMax-H3` (only the root partitions, ~144 GB of
+    the 498 GB repo) plus the Turbo adapter from `lightx2v/Minimax-h3-Turbo`.
+    The download is large enough that it is worth doing before the first run:
+    ```bash
+    huggingface-cli download MiniMaxAI/MiniMax-H3 \
+        --include "*.json" "transformer/*" "text_encoder/*" "tokenizer/*" "vae/*" \
+                  "audio_vae/*" "processor/*" "scheduler/*" "audio_scheduler/*"
+    huggingface-cli download lightx2v/Minimax-h3-Turbo \
+        minimax_h3_fl2v_turbo_4step_v1.2_768p_bf16.safetensors
+    ```
+    H3 is released under the MiniMax H3 Community License, which has
+    region-specific terms. Read it on the model page before using the model.
 
   If a model's HuggingFace page is gated, accept its license there and
   authenticate once so the download can proceed:
@@ -285,7 +303,9 @@ so open each Photoshop template and save it first, or copy its JSON from
   huggingface-cli login
   ```
 - **The first standup is slow.** Initial warmup includes trace capture:
-  ~5–10 min for SDXL, ~15 min for LTX-2.3, ~15–25 min for Wan 2.2. The node
+  ~5–10 min for SDXL, ~15 min for LTX-2.3, ~15–25 min for Wan 2.2, and
+  ~15–20 min for MiniMax-H3, which also writes ~120 GB of converted weights to
+  `~/.cache/tt-dit` (later standups take ~2 min). The node
   blocks until the server reports healthy; this is expected, not a hang. Watch
   progress in `<TT_METAL_DIR>/<model>_server_comfy.log`, which on Stack 2 is
   `~/src/tt-inference-server/comfyui-media-server/<model>_server_comfy.log`.

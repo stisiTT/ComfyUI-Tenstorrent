@@ -104,7 +104,7 @@ backstops a kill of any tt-metal server the node left running.
 
 | Node | Category | Purpose |
 |------|----------|---------|
-| **TT Checkpoint Loader** (`TT_CheckpointLoader`) | Tenstorrent | Stand up a tt-metal model (auto-launch server) and return `MODEL` / `CLIP` / `VAE` handles. Inputs: `model_type` (`sdxl`, `wan22`, `ltx` or `ltx_pro`); optional `board` override and `server_url` (connect to an already-running server instead of auto-standup). |
+| **TT Checkpoint Loader** (`TT_CheckpointLoader`) | Tenstorrent | Stand up a tt-metal model (auto-launch server) and return `MODEL` / `CLIP` / `VAE` handles. Inputs: `model_type` (`sdxl`, `wan22`, `ltx`, `ltx_pro` or `h3`); optional `board` override and `server_url` (connect to an already-running server instead of auto-standup). |
 | **TT LoRA Loader** (`TT_LoraLoader`) | Tenstorrent | Attach a LoRA with separate UNet (`strength_model`) and CLIP (`strength_clip`) scales. Returns `MODEL` / `CLIP`. |
 | **TT Wan LoRA Loader** (`TT_WanLoraLoader`) | Tenstorrent/video | Attach per-expert Wan 2.2 LoRA paths (high/low) applied server-side. Returns `MODEL`. |
 | **TT KSampler** (`TT_KSampler`) | Tenstorrent/sampling | Run SDXL denoising on the server; returns `LATENT`. |
@@ -114,6 +114,7 @@ backstops a kill of any tt-metal server the node left running.
 | **TT Text To Video** (`TT_TextToVideo`) | Tenstorrent/video | One-shot Wan 2.2 text-to-video; returns image frames. |
 | **TT LTX Video (AV)** (`TT_LTXVideo`) | Tenstorrent/video | One-shot LTX-2.3 text-to-audio+video; returns a native `VIDEO` (muxed h264 + AAC) for `Save Video`. Clip geometry and step count are fixed by the running server. The negative input is accepted but ignored — the distilled pipeline has no CFG. |
 | **TT LTX Video Pro (AV)** (`TT_LTXVideoPro`) | Tenstorrent/video | Guided one-stage LTX-2.3. Same `VIDEO` output, but takes `steps`, `video_cfg` / `audio_cfg`, `video_stg` / `audio_stg`, `stg_block`, and a **live** negative prompt. Several times slower than the distilled node. Needs `model_type=ltx_pro`. |
+| **TT H3 Video (AV)** (`TT_H3Video`) | Tenstorrent/video | MiniMax-H3 Turbo text-to-audio+video, or image-to-video when a `first_frame` and/or `last_frame` is connected. Takes `duration` (4-15 s), `aspect_ratio` and `seed`; returns a native `VIDEO`. Output is 768p on the short side at 24 fps. Needs `model_type=h3`. |
 | **TT LTX LoRA Loader** (`TT_LTXLoraLoader`) | Tenstorrent/video | Attach an LTX-2.3 LoRA, applied on device server-side. **Chainable** — wire several in series to stack them, each with its own strength. Adapters live in `models/loras/ltx/`. |
 | **TT Preview Video** (`TT_PreviewVideo`) | Tenstorrent/video | Show a `VIDEO` in the graph without writing to `output/`. The video counterpart of `Preview Image`: writes to ComfyUI's temp directory and renders a player. Never re-encodes. Works with any `VIDEO`, not just the TT nodes. |
 | **TT Model Info** (`TT_ModelInfo`) | Tenstorrent/utils | Display information about a TT model handle. |
@@ -152,6 +153,23 @@ finished clip. The `vae` output of the loader is unused here.
 Everything runs on device, text encoding included — LTX's text encoder is
 Gemma-3-12B, which is why the prompt travels to the server as a string rather
 than as embeddings computed on the host.
+
+### Example: MiniMax-H3, text or image to audio+video
+
+```
+[TT Checkpoint Loader (h3)] ─model─▶ [TT H3 Video (AV)] ─video─▶ [TT Preview Video]
+            └ clip ─▶ [CLIP Text Encode] ─▶ TT H3 Video        └─────▶ [Save Video]
+[Load Image] ─▶ first_frame (optional) ─▶ TT H3 Video
+```
+
+H3 runs the lightx2v 4-step Turbo adapter, so there is no step widget. Unlike
+LTX, length and aspect ratio are chosen per run; a connected keyframe sets the
+shape instead. A 5 s 16:9 clip (1344x768) takes about a minute on a QuietBox 2
+once the server is warm. `load_tt_h3_first_frame` animates a still, which pairs
+well with an SDXL render saved from the image graph.
+
+On a QuietBox 2 the server opens all four chips as a 1x4 mesh and runs H3
+untuned (tt-metal only ships Galaxy presets for it), so expect it to get faster.
 
 ### LoRA on LTX
 
