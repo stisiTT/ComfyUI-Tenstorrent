@@ -5,8 +5,8 @@ Diffusion XL** and **SD 3.5** (image), **Wan 2.2**, **LTX-2.3** and **MiniMax-H3
 (video, the last two with audio) on Tenstorrent hardware via a tt-metal
 inference server.
 
-However many repos are involved, it is always **two separate Python
-environments** talking over a local HTTP socket. That isolation is intentional:
+It is always **two separate Python environments** talking over a local HTTP
+socket. That isolation is intentional:
 tt-metal's native/NumPy ABI must never mix with ComfyUI's.
 
 ```
@@ -17,10 +17,8 @@ ComfyUI + this package (ComfyUI venv)         media server (runs in tt-metal's p
         └ talks ───────────────HTTP :8000───────────▶ server.py ──▶ Tenstorrent device
 ```
 
-Where that server code lives is the only thing that differs between the two
-stacks in [section 2](#2-pick-a-stack-then-clone): the tt-metal repo root on
-Stack 1, or tt-inference-server on Stack 2. It runs under tt-metal's
-`python_env` either way.
+The media server ships inside this package (`media_server/`) and runs under
+the `python_env` of a tt-metal checkout you build once.
 
 You pick a model in the **TT Checkpoint Loader** node; it stands up and supervises
 the tt-metal server for you. You do not launch the server by hand.
@@ -59,73 +57,47 @@ the tt-metal server for you. You do not launch the server by hand.
 
 ---
 
-## 2. Pick a stack, then clone
+## 2. Clone
 
-There are two supported layouts. They differ only in **where the media server
-lives**; the nodes behave identically on both.
-
-| | server (`TT_METAL_DIR`) | tt-metal (`TT_METAL_HOME`) | `fuse_lora` |
-|---|---|---|---|
-| **Stack 1** (legacy) | tt-metal repo root | `samt/standalone-media-20260703` @ `ce05994325a` | `(lora_scale_unet, lora_scale_clip)` |
-| **Stack 2** (current) | tt-inference-server `comfyui-media-server/` @ `6a4085df0` | `stisi/sdxl-per-component-lora` | `(lora_scale, clip_scale)` |
-| **Stack 2 + LTX-2.3 / MiniMax-H3** | tt-inference-server `comfyui-media-server` | `stisi/comfyui_20261023_main` | `(lora_scale, clip_scale)` |
-
-**This guide follows Stack 2**, the relocated server. That is where the work is
-headed and what the container path is built from.
-
-> **Do not mix the stacks.** `fuse_lora`'s signature differs between the two
-> tt-metal branches, so the server copy and the `TT_METAL_HOME` checkout must
-> come from the same row. Pairing the relocated server with
-> `samt/standalone-media-20260703` raises `TypeError: fuse_lora() got an
-> unexpected keyword argument 'clip_scale'` on the first LoRA request. Either
-> way the HTTP contract is unchanged: the request body always carries
-> `lora_scale_unet` / `lora_scale_clip`.
-
-> **For LTX-2.3 and MiniMax-H3 use the third row.** Its two branches are
-> descendants of Stack 2's, so the `fuse_lora` rule above still holds, but the
-> LTX and H3 servers (`--model ltx`, `--model ltx_pro`, `--model h3`) and the
-> LTX LoRA node exist only there. LTX adapters go in
-> `models/loras/ltx/`; that directory must exist, or the node's dropdown falls
-> back to listing adapters for other models, none of which can bind.
-
-Clone stock ComfyUI and the two Tenstorrent repos as siblings, then clone this
-package into ComfyUI's `custom_nodes/`:
+Three checkouts: stock ComfyUI, tt-metal next to it, and this package inside
+ComfyUI's `custom_nodes/`.
 
 ```bash
 cd ~/src                 # or wherever you keep checkouts
 git clone https://github.com/Comfy-Org/ComfyUI.git
 git clone https://github.com/tenstorrent/tt-metal.git
-git clone https://github.com/tenstorrent/tt-inference-server.git
 git clone https://github.com/stisiTT/ComfyUI-Tenstorrent.git ComfyUI/custom_nodes/ComfyUI-Tenstorrent
 ```
 
 Resulting layout:
 ```
 ~/src/ComfyUI
-~/src/ComfyUI/custom_nodes/ComfyUI-Tenstorrent
-~/src/tt-metal
-~/src/tt-inference-server
+~/src/ComfyUI/custom_nodes/ComfyUI-Tenstorrent              <- nodes
+~/src/ComfyUI/custom_nodes/ComfyUI-Tenstorrent/media_server <- the server they launch
+~/src/tt-metal                                              <- built in section 3
 ```
 
 ComfyUI itself is unmodified; everything Tenstorrent-specific is in this
-package.
+package. The nodes look for tt-metal next to ComfyUI; if yours is elsewhere,
+set `TT_METAL_HOME` to it.
 
-> For **Stack 1**, omit tt-inference-server: `TT_METAL_DIR` defaults to
-> `../tt-metal`, whose repo root holds `launch_server.sh`, so the sibling layout
-> just works. Either way, set `TT_METAL_DIR` explicitly if you put the server
-> somewhere else.
+> LTX adapters go in `ComfyUI/models/loras/ltx/`; that directory must exist, or
+> the LTX LoRA node's dropdown falls back to listing adapters for other models,
+> none of which can bind.
 
 ---
 
 ## 3. Build tt-metal (pinned branch)
 
-The nodes need per-component LoRA, which is **not on tt-metal's `main`** yet:
-it is [PR #47509](https://github.com/tenstorrent/tt-metal/pull/47509), still
-open. Check out that branch, init submodules, then build.
+The media server needs tt-metal changes that are **not on `main`** yet:
+per-component LoRA ([PR #47509](https://github.com/tenstorrent/tt-metal/pull/47509),
+still open), the LTX-2.3 QuietBox 2 and LoRA work, and a MiniMax-H3 fix. The
+branch below carries them on top of a recent `main`. Check it out, init
+submodules, then build.
 
 ```bash
 cd ~/src/tt-metal
-git checkout stisi/comfyui_20261023_main       # LTX-2.3 + MiniMax-H3; PR #47509's branch merged with main
+git checkout stisi/comfyui_20261023_main
 git submodule update --init --recursive
 
 # System build dependencies (uses sudo; one-time).
@@ -137,21 +109,6 @@ git submodule update --init --recursive
 # Create the tt-metal Python environment (./python_env, via uv).
 ./create_venv.sh
 ```
-
-Then put the server repo on its branch. Nothing to build here, it is Python only:
-
-```bash
-cd ~/src/tt-inference-server
-git checkout comfyui-media-server              # comfyui-media-server/ with the LTX and H3 servers
-```
-
-> **Why a branch and not `main`?** PR #47509 is on the critical path and has not
-> merged. Until it does, the server's `fuse_lora(lora_scale, clip_scale)` call
-> only works against this branch. Once it lands you can track a release instead.
->
-> For **Stack 1** the tt-metal branch is `samt/standalone-media-20260703` and
-> there is no tt-inference-server step, since that branch carries its own copy of
-> the server at the repo root.
 
 You do **not** need to activate `python_env` yourself or install the server's
 `fastapi`/`uvicorn` deps — `launch_server.sh` does that automatically when the
@@ -185,24 +142,17 @@ pip install -r custom_nodes/ComfyUI-Tenstorrent/requirements.txt
 
 ```bash
 cd ~/src/ComfyUI/custom_nodes/ComfyUI-Tenstorrent
-./scripts/launch_subprocess_mode.sh   # Stack 2; ComfyUI on http://127.0.0.1:8188
+./scripts/launch_with_http.sh         # ComfyUI on http://127.0.0.1:8188
 # options are passed straight through: --port 8188  --listen 127.0.0.1
 ```
 
-> `launch_subprocess_mode.sh` exports
-> `TT_METAL_DIR=<parent>/tt-inference-server/comfyui-media-server` and
-> `TT_METAL_HOME=<parent>/tt-metal`, then execs `launch_with_http.sh`. On
-> **Stack 1** run `./scripts/launch_with_http.sh` directly instead: no environment
-> variables are needed, since `TT_METAL_DIR` defaults to `../tt-metal`.
->
+No environment variables are needed with the layout above: the nodes launch
+`media_server/` from this package against `../tt-metal`. Set `TT_METAL_HOME`
+if tt-metal lives elsewhere.
+
 > Keep `--listen` on `127.0.0.1` unless you trust every host on the network.
 > The server accepts a client-supplied `lora_path` and loads it from disk, so
 > exposing the UI exposes that too.
->
-> There is also a containerized path (`TT_LAUNCH_MODE=docker`) that runs the
-> server through tt-inference-server's `run.py`; it needs an image built first,
-> so it is opt-in. Both stacks and both launch paths are documented in
-> [`INTEGRATION.md`](INTEGRATION.md).
 
 This activates the ComfyUI venv and runs `main.py --cpu` (the device does the
 compute; ComfyUI only orchestrates). Open the web UI,
@@ -255,7 +205,7 @@ what is there, filtered by folder.
       --local-dir ComfyUI/models/loras/wan22/lightning
   ```
 - LTX-2.3, into `ComfyUI/models/loras/ltx/` (create the folder first; see the
-  note in [section 2](#2-pick-a-stack-then-clone)). The example graphs expect
+  note in [section 2](#2-clone)). The example graphs expect
   these file names, so download and rename (or symlink) them:
 
   | File name in `loras/ltx/` | HuggingFace source |
@@ -309,8 +259,8 @@ so open each Photoshop template and save it first, or copy its JSON from
   ~15–20 min for MiniMax-H3, which also writes ~120 GB of converted weights to
   `~/.cache/tt-dit` (later standups take ~2 min). The node
   blocks until the server reports healthy; this is expected, not a hang. Watch
-  progress in `<TT_METAL_DIR>/<model>_server_comfy.log`, which on Stack 2 is
-  `~/src/tt-inference-server/comfyui-media-server/<model>_server_comfy.log`.
+  progress in
+  `~/src/ComfyUI/custom_nodes/ComfyUI-Tenstorrent/media_server/<model>_server_comfy.log`.
 - **A fresh tt-metal checkout compiles its device kernels on first use.** The
   very first standup from a new checkout adds kernel compilation on top of the
   warmup, and the log fills with compiler command lines. Their `-Werror` flags
@@ -325,9 +275,10 @@ so open each Photoshop template and save it first, or copy its JSON from
 
 | Symptom | Fix |
 |---------|-----|
-| `launch_server.sh not found at <path>` | `TT_METAL_DIR` is wrong for your stack. Stack 2: it must be `<tt-inference-server>/comfyui-media-server` (use `launch_subprocess_mode.sh`). Stack 1: it must be the tt-metal repo root, which the sibling layout gives you by default. |
-| `TypeError: fuse_lora() got an unexpected keyword argument 'clip_scale'` | Mixed stacks. The relocated server is paired with a `samt/standalone-media-20260703` checkout; see the table in section 2. |
-| Server never becomes healthy | First Wan 2.2 warmup can take ~25 min; check `<TT_METAL_DIR>/<model>_server_comfy.log`; raise `TT_SERVER_READY_TIMEOUT` (seconds). |
+| `launch_server.sh not found at <path>` | `TT_SERVER_DIR` (or the old `TT_METAL_DIR`) is set in your environment and points away from the bundled server. Unset both to use `media_server/` in this package. |
+| `No built tt-metal at <path>` | Build tt-metal next to ComfyUI (section 3), or set `TT_METAL_HOME` to your built checkout. |
+| `TypeError: fuse_lora() got an unexpected keyword argument 'clip_scale'` | The tt-metal checkout is on the wrong branch. Check out the branch in section 3 and rebuild. |
+| Server never becomes healthy | First Wan 2.2 warmup can take ~25 min; check `media_server/<model>_server_comfy.log`; raise `TT_SERVER_READY_TIMEOUT` (seconds). |
 | `tt-smi not found` | Ensure `tt-smi` is on `PATH` (installed by tt-installer) or set `TT_SMI_BIN`. |
 | `Error: --board is required when --model ltx` | Only when launching the server by hand -- the node always passes it. Add `--board p300x2` (or your board) to `launch_server.sh`. |
 | LTX clip is the wrong size or length | Geometry is pinned when the pipeline is built, so it cannot change per request. Relaunch with `--height 1088 --width 1920 --frames 121`: height and width must be multiples of 64, and `frames - 1` divisible by 8. |

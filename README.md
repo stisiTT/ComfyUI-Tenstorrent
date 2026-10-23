@@ -1,8 +1,8 @@
 # Tenstorrent Custom Nodes for ComfyUI
 
-Custom nodes for running Stable Diffusion XL (image) and Wan 2.2 (text-to-video)
-on Tenstorrent hardware (N150 / N300 / T3K / p150 / p300x2 / Galaxy) via a
-tt-metal HTTP inference server.
+Custom nodes for running Stable Diffusion XL (image), and Wan 2.2, LTX-2.3 and
+MiniMax-H3 (video) on Tenstorrent hardware via a tt-metal HTTP inference server
+that ships in this package (`media_server/`).
 
 ## How it works
 
@@ -15,14 +15,14 @@ happens on the Tenstorrent device inside that server.
 ComfyUI (this process, ComfyUI venv)
   └─ TT_CheckpointLoader
        └─ server_manager.py
-            ├─ Popen ──▶ <tt-metal>/launch_server.sh   (spawned subprocess, tt-metal python_env)
-            └─ HTTP  ──▶ http://127.0.0.1:8000          (/health, inference endpoints)
-                              └─ tt-metal server.py ──▶ Tenstorrent hardware
+            ├─ Popen ──▶ media_server/launch_server.sh   (subprocess, tt-metal's python_env)
+            └─ HTTP  ──▶ http://127.0.0.1:8000            (/health, inference endpoints)
+                              └─ media_server/server.py ──▶ Tenstorrent hardware
 ```
 
-The two repos use **separate Python virtual environments on purpose** (so
-tt-metal's native/NumPy ABI never contaminates ComfyUI). The only coupling is
-the subprocess launch + the local HTTP socket.
+ComfyUI and the server use **separate Python virtual environments on purpose**
+(so tt-metal's native/NumPy ABI never contaminates ComfyUI). The only coupling
+is the subprocess launch + the local HTTP socket.
 
 - **Single model at a time.** The server serves one model; selecting a different
   `model_type` stops the running server and starts the new one (a multi-minute
@@ -34,37 +34,14 @@ the subprocess launch + the local HTTP socket.
 
 1. **Tenstorrent hardware** with drivers/firmware installed (e.g. via
    `tt-installer`), and `tt-smi` available on `PATH`.
-2. **A built tt-metal checkout** on the branch that contains the standalone media
-   server (`server.py`, `launch_server.sh`, `requirements-server.txt`,
-   `device_specs.py`, `worker.py`, the SDXL/Wan runners), with its `python_env`
-   created (`./create_venv.sh`). By default these nodes look for tt-metal as a
-   sibling of the ComfyUI checkout (`../tt-metal`); override with `TT_METAL_DIR`.
-
-   There are two self-consistent stacks and they cannot be mixed — the relocated
-   server needs `fuse_lora(lora_scale, clip_scale)`, which only the
-   per-component-LoRA tt-metal branch accepts. **Read
-   [`INTEGRATION.md`](./INTEGRATION.md) for the version matrix** before pinning
-   anything; it also has the PR breakdown and where the server is headed
-   (tt-inference-server).
-3. **Model weights** reachable by the tt-metal server (downloaded into its
-   `HF_HOME` / ttnn model cache).
-
-## Launch modes
-
-The node can stand the server up two ways, selected by `TT_LAUNCH_MODE`:
-
-- **`subprocess` (default)** — spawns `<TT_METAL_DIR>/launch_server.sh` directly on
-  the host, no container. Needs nothing built beyond tt-metal itself, which is why
-  it is the default.
-- **`docker`** — drives `tt-inference-server`'s
-  `run.py --workflow server --docker-server --dev-mode --override-docker-image`
-  to start the `comfyui-media-server` container. Opt-in: build the image first
-  (see `tt-inference-server/comfyui-media-server/LOCAL_TESTING.md`).
-
-```
-subprocess mode:   node → <TT_METAL_DIR>/launch_server.sh → server.py → TT HW
-docker mode:       node → run.py --docker-server → container (comfyui-media-server) → TT HW
-```
+2. **A built tt-metal checkout** on the branch named in
+   [`INSTALL.md`](./INSTALL.md), with its `python_env` created
+   (`./create_venv.sh`). The server imports `ttnn` and `models.*` from it. By
+   default the nodes look for it next to ComfyUI (`../tt-metal`); override with
+   `TT_METAL_HOME`. [`INTEGRATION.md`](./INTEGRATION.md) has the tt-metal PR
+   breakdown.
+3. **Model weights** reachable by the server (downloaded into its `HF_HOME` /
+   ttnn model cache).
 
 ## Configuration (environment variables)
 
@@ -72,17 +49,14 @@ All read by `server_manager.py`; every default is overridable:
 
 | Variable            | Default                                  | Purpose |
 |---------------------|------------------------------------------|---------|
-| `TT_LAUNCH_MODE`    | `subprocess`                             | `subprocess` (launch_server.sh on the host) or `docker` (run.py container) |
-| `TT_INFERENCE_SERVER_DIR` | `../tt-inference-server`            | Checkout holding `run.py` (docker mode) |
-| `TT_INFERENCE_PY`   | `<TT_INFERENCE_SERVER_DIR>/venv/bin/python` | Python that runs `run.py` (docker mode) |
-| `TT_COMFYUI_IMAGE`  | `comfyui-media-server:dev`               | Image passed to `--override-docker-image` (docker mode) |
-| `TT_RUNPY_EXTRA_ARGS` | (empty)                                | Extra args appended to `run.py` (e.g. weight mounts) |
-| `TT_METAL_DIR`      | `../tt-metal` (sibling of ComfyUI)       | tt-metal checkout that holds `launch_server.sh` (subprocess mode) |
+| `TT_METAL_HOME`     | `../tt-metal` (sibling of ComfyUI)       | Built tt-metal checkout the server runs against |
+| `TT_SERVER_DIR`     | `media_server/` in this package          | Server to launch; only for testing another copy. `TT_METAL_DIR` is its deprecated name |
 | `TT_SMI_BIN`        | `tt-smi` resolved from `PATH`            | tt-smi console script (board reset / detection) |
 | `TT_SERVER_HOST`    | `127.0.0.1`                              | Host the tt-metal server binds / is reached on |
 | `TT_SERVER_PORT`    | `8000`                                   | Port for the tt-metal server |
 | `TT_SDXL_BOARD`     | `p150`                                   | Board passed to `launch_server.sh` for SDXL |
 | `TT_WAN22_BOARD`    | `p300x2`                                 | Board passed to `launch_server.sh` for Wan 2.2 |
+| `TT_LTX_BOARD`, `TT_LTX_PRO_BOARD`, `TT_H3_BOARD` | `p300x2`   | Board passed to `launch_server.sh` for LTX-2.3 and MiniMax-H3 |
 | `TT_SERVER_READY_TIMEOUT` | `1800` (seconds)                   | How long to wait for `/health` during warmup |
 | `TT_SERVER_PID_FILE`| `/tmp/tt_comfy_server.pid`               | Lock file used to reap an orphaned server |
 
@@ -371,12 +345,15 @@ you do.
 
 ## Troubleshooting
 
-**`launch_server.sh not found at <path>`** — set `TT_METAL_DIR` to your tt-metal
-checkout, or place tt-metal as a sibling of ComfyUI.
+**`launch_server.sh not found at <path>`**: `TT_SERVER_DIR` (or the old
+`TT_METAL_DIR`) is set and points away from the bundled server; unset it.
+
+**`No built tt-metal at <path>`**: build tt-metal next to ComfyUI (see
+`INSTALL.md`) or set `TT_METAL_HOME` to your built checkout.
 
 **Server never becomes healthy / times out** — first warmup can take up to ~25
 min for Wan 2.2 (trace capture). Watch the server log at
-`<TT_METAL_DIR>/<model>_server_comfy.log`. Raise `TT_SERVER_READY_TIMEOUT` if needed.
+`media_server/<model>_server_comfy.log`. Raise `TT_SERVER_READY_TIMEOUT` if needed.
 
 **`tt-smi` not found** — ensure `tt-smi` is on `PATH` (installed by
 `tt-installer`) or set `TT_SMI_BIN` to its console script. Used for the board
