@@ -71,46 +71,6 @@ PID_FILE = os.getenv("TT_SERVER_PID_FILE", "/tmp/tt_comfy_server.pid")
 # Warmup can include first-run trace capture (SD35/Wan up to ~25 min).
 READY_TIMEOUT_SECONDS = float(os.getenv("TT_SERVER_READY_TIMEOUT", "1800"))
 
-# ---------------------------------------------------------------------------
-# Launch mode
-#   "subprocess" — spawn <TT_METAL_DIR>/launch_server.sh directly; the server runs
-#                  on the host in tt-metal's venv. This is the default: it needs
-#                  nothing built beyond tt-metal itself.
-#   "docker"     — drive tt-inference-server's run.py to start a containerized
-#                  server. Opt-in, because it needs a comfyui-media-server image
-#                  built locally first (see INTEGRATION.md, Path B).
-# ---------------------------------------------------------------------------
-LAUNCH_MODE = os.getenv("TT_LAUNCH_MODE", "subprocess").strip().lower()
-
-# tt-inference-server checkout that holds run.py (sibling of ComfyUI by default).
-TT_INFERENCE_SERVER_DIR = os.getenv(
-    "TT_INFERENCE_SERVER_DIR",
-    os.path.join(os.path.dirname(_COMFYUI_ROOT), "tt-inference-server"),
-)
-
-
-def _default_inference_py() -> str:
-    venv_py = os.path.join(TT_INFERENCE_SERVER_DIR, "venv", "bin", "python")
-    return venv_py if os.path.isfile(venv_py) else "python3"
-
-
-# Python used to run run.py, the Docker image passed to --override-docker-image,
-# and any extra run.py args (space-split) e.g. weight-volume mounts.
-TT_INFERENCE_PY = os.getenv("TT_INFERENCE_PY") or _default_inference_py()
-TT_COMFYUI_IMAGE = os.getenv("TT_COMFYUI_IMAGE", "comfyui-media-server:dev")
-TT_RUNPY_EXTRA_ARGS = os.getenv("TT_RUNPY_EXTRA_ARGS", "").split()
-
-# Map the node's model_type -> run.py --model (a model_spec model_name).
-_RUNPY_MODEL_NAMES = {
-    "sdxl": os.getenv("TT_SDXL_RUNPY_MODEL", "stable-diffusion-xl-base-1.0"),
-    "wan22": os.getenv("TT_WAN22_RUNPY_MODEL", "Wan2.2-T2V-A14B-Diffusers"),
-    "sd35": os.getenv("TT_SD35_RUNPY_MODEL", "stable-diffusion-3.5-large"),
-}
-
-# How long to wait for run.py to bring the container up (a first-time image pull
-# can be slow; our local override image skips the pull).
-RUNPY_TIMEOUT_SECONDS = float(os.getenv("TT_RUNPY_TIMEOUT", "900"))
-
 # Device nodes a tt-metal worker opens; used to detect which PIDs hold the boards.
 TT_DEVICE_DIR = "/dev/tenstorrent"
 
@@ -128,10 +88,7 @@ _FATAL_LOG_MARKERS = (
 class _ServerManager:
     def __init__(self):
         self._lock = threading.RLock()
-        self._mode = LAUNCH_MODE
         self._proc: Optional[subprocess.Popen] = None
-        # Name of the running docker container (docker mode only).
-        self._container: Optional[str] = None
         self._model: Optional[str] = None
         self._board: Optional[str] = None
         self._host = DEFAULT_HOST
@@ -207,14 +164,6 @@ class _ServerManager:
 
     def _write_pid_file(self):
         try:
-            if self._mode == "docker":
-                if self._container is not None:
-                    with open(PID_FILE, "w") as f:
-                        json.dump(
-                            {"container": self._container, "model": self._model, "mode": "docker"},
-                            f,
-                        )
-                return
             if self._proc is not None:
                 pgid = os.getpgid(self._proc.pid)
                 with open(PID_FILE, "w") as f:
@@ -411,9 +360,6 @@ class _ServerManager:
 
     def stop(self):
         with self._lock:
-            if self._mode == "docker":
-                self._stop_docker()
-                return
             proc = self._proc
             if proc is None:
                 return
@@ -490,20 +436,6 @@ class _ServerManager:
                 logger.warning(f"Could not read PID file {PID_FILE}: {e}")
                 return
 
-            # Docker orphan: stop the recorded container.
-            if info.get("mode") == "docker" or info.get("container"):
-                container = info.get("container")
-                if container:
-                    logger.info(f"PID-file fallback: stopping orphaned container {container}")
-                    for args in (["docker", "stop", container], ["docker", "rm", "-f", container]):
-                        try:
-                            subprocess.run(args, timeout=60,
-                                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        except Exception:
-                            pass
-                self._remove_pid_file()
-                return
-
             pid = info.get("pid")
             pgid = info.get("pgid")
             model = info.get("model")
@@ -527,188 +459,6 @@ class _ServerManager:
             self._last_teardown_wedged = self._last_teardown_wedged or forced or (not released)
 
     def _start(self, model: str, board: str):
-        if self._mode == "docker":
-            self._start_docker(model, board)
-        else:
-            self._start_subprocess(model, board)
-
-    # -- docker mode (tt-inference-server run.py --docker-server) -----------
-
-    def _start_docker(self, model: str, board: str):
-        run_model = _RUNPY_MODEL_NAMES.get(model)
-        if not run_model:
-            raise RuntimeError(
-                f"No run.py --model mapping for '{model}'. Set "
-                f"TT_{model.upper()}_RUNPY_MODEL to the model_spec model_name."
-            )
-        run_script = os.path.join(TT_INFERENCE_SERVER_DIR, "run.py")
-        if not os.path.isfile(run_script):
-            raise RuntimeError(
-                f"run.py not found at {run_script} (set TT_INFERENCE_SERVER_DIR)"
-            )
-
-        # A model switch (or a wedged prior teardown) leaves the boards programmed
-        # for the previous topology; reset once before the new container's device
-        # init. Docker owns the container's processes, so there is no host-side
-        # /dev/tenstorrent holder to reap here (unlike subprocess mode).
-        if self._force_reset_next or self._last_teardown_wedged:
-            logger.warning("Resetting Tenstorrent boards before docker launch")
-            try:
-                reset_all_boards()
-            except Exception as e:
-                logger.warning(f"board reset failed (continuing): {e}")
-        self._force_reset_next = False
-        self._last_teardown_wedged = False
-
-        cmd = [
-            TT_INFERENCE_PY, "run.py",
-            "--model", run_model,
-            "--workflow", "server",
-            "--tt-device", board,
-            "--docker-server",
-            "--dev-mode",
-            "--override-docker-image", TT_COMFYUI_IMAGE,
-            "--service-port", str(self._port),
-        ] + TT_RUNPY_EXTRA_ARGS
-
-        log_path = self._log_path(model)
-        logger.info(
-            f"Launching docker server via run.py: {' '.join(cmd)} "
-            f"(cwd={TT_INFERENCE_SERVER_DIR}, image={TT_COMFYUI_IMAGE}, log={log_path})"
-        )
-        # run.py starts the container detached and returns; capture its output so
-        # we can recover the container name and surface failures.
-        with open(log_path, "w") as log_file:
-            try:
-                proc = subprocess.run(
-                    cmd,
-                    cwd=TT_INFERENCE_SERVER_DIR,
-                    stdout=log_file,
-                    stderr=subprocess.STDOUT,
-                    timeout=RUNPY_TIMEOUT_SECONDS,
-                )
-            except subprocess.TimeoutExpired:
-                raise RuntimeError(
-                    f"run.py timed out after {RUNPY_TIMEOUT_SECONDS:.0f}s starting "
-                    f"the {model} container. Last log lines:\n{self._tail(log_path)}"
-                )
-        if proc.returncode != 0:
-            raise RuntimeError(
-                f"run.py failed (exit {proc.returncode}) starting the {model} "
-                f"container. Last log lines:\n{self._tail(log_path)}"
-            )
-
-        self._container = self._discover_container(log_path)
-        if not self._container:
-            raise RuntimeError(
-                f"Could not determine the container run.py started (image "
-                f"{TT_COMFYUI_IMAGE}). Last log lines:\n{self._tail(log_path)}"
-            )
-        logger.info(f"Container started: {self._container}")
-        self._model = model
-        self._board = board
-        self._write_pid_file()
-        self._register_cleanup()
-        self._wait_for_health_docker(model)
-
-    @staticmethod
-    def _discover_container(log_path: str) -> Optional[str]:
-        """Recover the container name run.py assigned (tt-inference-server-<uuid>)."""
-        import re
-        try:
-            with open(log_path) as f:
-                matches = re.findall(r"tt-inference-server-[0-9a-fA-F]+", f.read())
-            if matches:
-                return matches[-1]
-        except Exception:
-            pass
-        # Fallback: newest running container from our image.
-        try:
-            out = subprocess.run(
-                ["docker", "ps", "--filter", f"ancestor={TT_COMFYUI_IMAGE}",
-                 "--format", "{{.Names}}"],
-                capture_output=True, text=True, timeout=15,
-            )
-            names = [n for n in out.stdout.splitlines() if n.strip()]
-            if names:
-                return names[0]
-        except Exception:
-            pass
-        return None
-
-    def _container_running(self) -> bool:
-        if not self._container:
-            return False
-        try:
-            out = subprocess.run(
-                ["docker", "inspect", "-f", "{{.State.Running}}", self._container],
-                capture_output=True, text=True, timeout=10,
-            )
-            return out.returncode == 0 and out.stdout.strip() == "true"
-        except Exception:
-            return False
-
-    def _docker_logs(self, n: int = 40) -> str:
-        if not self._container:
-            return "(no container)"
-        try:
-            out = subprocess.run(
-                ["docker", "logs", "--tail", str(n), self._container],
-                capture_output=True, text=True, timeout=15,
-            )
-            return (out.stdout + out.stderr)[-4000:] or "(container logs empty)"
-        except Exception:
-            return "(could not read container logs)"
-
-    def _wait_for_health_docker(self, model: str):
-        logger.info(f"Waiting for container /health (timeout {READY_TIMEOUT_SECONDS:.0f}s)...")
-        deadline = time.time() + READY_TIMEOUT_SECONDS
-        last_log = 0.0
-        while time.time() < deadline:
-            if not self._container_running():
-                tail = self._docker_logs()
-                self.stop()
-                raise RuntimeError(
-                    f"container for '{model}' exited during startup. "
-                    f"Last container logs:\n{tail}"
-                )
-            if self._health_matches(model, self._health()):
-                logger.info(f"container healthy at {self.base_url} (model={model})")
-                return
-            now = time.time()
-            if now - last_log >= 30:
-                logger.info(f"Still warming up (model={model})... first run includes trace capture")
-                last_log = now
-            time.sleep(5)
-        tail = self._docker_logs()
-        self.stop()
-        raise RuntimeError(
-            f"container for '{model}' did not become healthy within "
-            f"{READY_TIMEOUT_SECONDS:.0f}s. Last container logs:\n{tail}"
-        )
-
-    def _stop_docker(self):
-        container = self._container
-        if container:
-            logger.info(f"Stopping comfyui-media-server container {container}")
-            for args in (["docker", "stop", container], ["docker", "rm", "-f", container]):
-                try:
-                    subprocess.run(args, timeout=60,
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                except Exception as e:
-                    logger.warning(f"{' '.join(args)} failed: {e}")
-        self._container = None
-        self._proc = None
-        self._model = None
-        self._board = None
-        # Bump so the checkpoint loader's IS_CHANGED token changes and ComfyUI
-        # re-runs it (relaunching the server) on the next graph evaluation.
-        self._generation += 1
-        self._remove_pid_file()
-
-    # -- subprocess mode (legacy: <TT_METAL_DIR>/launch_server.sh) ----------
-
-    def _start_subprocess(self, model: str, board: str):
         script = os.path.join(TT_METAL_DIR, "launch_server.sh")
         if not os.path.isfile(script):
             raise RuntimeError(f"launch_server.sh not found at {script} (set TT_METAL_DIR)")
@@ -851,9 +601,7 @@ class _ServerManager:
             return self.base_url
 
     def _is_running(self) -> bool:
-        """True if we are managing a live server (container or subprocess)."""
-        if self._mode == "docker":
-            return self._container is not None
+        """True if we are managing a live server."""
         return self._proc is not None and self._proc.poll() is None
 
     def get_generation(self) -> int:
