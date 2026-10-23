@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-tenstorrent"
-description = "ComfyUI nodes that run SDXL, Wan 2.2 and LTX on Tenstorrent hardware through the tt-inference-server media server."
-version = "0.1.0"
+description = "ComfyUI nodes that run SDXL, Wan 2.2, LTX-2.3 and MiniMax-H3 on Tenstorrent hardware through a bundled media server."
+version = "0.2.0"
 license = { text = "Apache-2.0" }
 dependencies = [
     "requests",
