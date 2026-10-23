@@ -41,6 +41,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly COMFYUI_DIR="${COMFYUI_DIR:-$(cd "${SCRIPT_DIR}/../../.." && pwd)}"
 readonly COMFYUI_VENV="${COMFYUI_DIR}/venv"
 readonly SERVER_PID_FILE="${TT_SERVER_PID_FILE:-/tmp/tt_comfy_server.pid}"
+# Defaults mirror server_manager.py: the bundled media server, and the tt-metal
+# checkout next to ComfyUI.
+readonly SERVER_DIR="${TT_SERVER_DIR:-${TT_METAL_DIR:-${SCRIPT_DIR}/../media_server}}"
+readonly METAL_HOME="${TT_METAL_HOME:-$(cd "${COMFYUI_DIR}/.." && pwd)/tt-metal}"
 
 COMFYUI_PORT="8188"
 COMFYUI_LISTEN="127.0.0.1"
@@ -103,6 +107,9 @@ validate_prerequisites() {
     local errors=0
     [[ -d "${COMFYUI_DIR}" ]] || { error "ComfyUI dir not found: ${COMFYUI_DIR}"; ((errors++)); }
     [[ -d "${COMFYUI_VENV}" ]] || { error "ComfyUI venv not found: ${COMFYUI_VENV}"; ((errors++)); }
+    [[ -x "${SERVER_DIR}/launch_server.sh" ]] || { error "Media server launcher not found: ${SERVER_DIR}/launch_server.sh"; ((errors++)); }
+    # A warning, not an error: a graph that only uses server_url never launches a server.
+    [[ -f "${METAL_HOME}/python_env/bin/activate" ]] || warn "No built tt-metal at ${METAL_HOME}; set TT_METAL_HOME or nodes cannot start a server"
     if [[ ${errors} -gt 0 ]]; then error "Validation failed with ${errors} error(s)"; exit 1; fi
     success "All prerequisites validated"
 }
