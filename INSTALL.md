@@ -68,7 +68,7 @@ lives**; the nodes behave identically on both.
 |---|---|---|---|
 | **Stack 1** (legacy) | tt-metal repo root | `samt/standalone-media-20260703` @ `ce05994325a` | `(lora_scale_unet, lora_scale_clip)` |
 | **Stack 2** (current) | tt-inference-server `comfyui-media-server/` @ `6a4085df0` | `stisi/sdxl-per-component-lora` | `(lora_scale, clip_scale)` |
-| **Stack 2 + LTX-2.3 / MiniMax-H3** | tt-inference-server `ltx-runner` | `stisi/comfyui_20261023_main` | `(lora_scale, clip_scale)` |
+| **Stack 2 + LTX-2.3 / MiniMax-H3** | tt-inference-server `comfyui-media-server` | `stisi/comfyui_20261023_main` | `(lora_scale, clip_scale)` |
 
 **This guide follows Stack 2**, the relocated server. That is where the work is
 headed and what the container path is built from.
@@ -142,7 +142,7 @@ Then put the server repo on its branch. Nothing to build here, it is Python only
 
 ```bash
 cd ~/src/tt-inference-server
-git checkout ltx-runner                        # comfyui-media-server/ with the LTX and H3 servers
+git checkout comfyui-media-server              # comfyui-media-server/ with the LTX and H3 servers
 ```
 
 > **Why a branch and not `main`?** PR #47509 is on the critical path and has not
