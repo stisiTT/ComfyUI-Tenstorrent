@@ -24,7 +24,7 @@
       ],
       "title": "Attach to running TT server (no standup)",
       "properties": {"Node name for S&R": "TT_CheckpointLoader"},
-      "widgets_values": ["sdxl", "", "http://127.0.0.1:8010"]
+      "widgets_values": ["sdxl", "", "http://127.0.0.1:8000"]
     },
     {
       "id": 2,
@@ -55,7 +55,7 @@
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "TT shutdown + board reset. Queue this on its own when you are done generating.\n\n- server_url points at the media server ComfyUI started (TT_SERVER_PORT=8010 on p11t07), so the loader attaches to it and never spins up a new one.\n- Works whatever model is loaded (sdxl, wan22, ltx): model_type is ignored when server_url is set.\n- If no server is running, the loader errors with 'Could not reach tt-metal server'. That means there was nothing to stop; the boards were not reset. Reset by hand with ~/.local/bin/tt-smi -r if needed.\n- reset_board=true resets ALL Tenstorrent boards on the host. Make sure nothing else (e.g. a tt-model container) is using them."
+        "TT shutdown + board reset. Queue this on its own when you are done generating.\n\n- server_url points at the media server ComfyUI started on the default port 8000 (change it if you set TT_SERVER_PORT), so the loader attaches to it and never spins up a new one.\n- Works whatever model is loaded (sdxl, wan22, ltx): model_type is ignored when server_url is set.\n- If no server is running, the loader errors with 'Could not reach tt-metal server'. That means there was nothing to stop; the boards were not reset. Reset by hand with tt-smi -r if needed.\n- reset_board=true resets ALL Tenstorrent boards on the host. Make sure nothing else (e.g. a tt-model container) is using them."
       ]
     }
   ],
