@@ -60,4 +60,25 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "TT_UnloadModel": "TT Kill Server",
 }
 
+
+def _install_example_inputs():
+    """Copy the images the example workflows load into ComfyUI's input folder."""
+    import logging
+    import os
+    import shutil
+
+    try:
+        import folder_paths
+
+        src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "example_inputs")
+        dst = folder_paths.get_input_directory()
+        for name in os.listdir(src):
+            if not os.path.exists(os.path.join(dst, name)):
+                shutil.copy2(os.path.join(src, name), dst)
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"Could not copy example inputs: {e}")
+
+
+_install_example_inputs()
+
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
