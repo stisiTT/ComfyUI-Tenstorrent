@@ -1,0 +1,5 @@
+# The tt-metal the nodes and media server are tested against.
+# scripts/setup_tt_metal.sh checks out this commit; the launcher warns when the
+# tt-metal next to ComfyUI does not contain it.
+branch=stisi/comfyui_20261023_main
+commit=64bc494efdf57fa47fc3bb865d09719ddfb2cadd

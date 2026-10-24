@@ -109,7 +109,12 @@ validate_prerequisites() {
     [[ -d "${COMFYUI_VENV}" ]] || { error "ComfyUI venv not found: ${COMFYUI_VENV}"; ((errors++)); }
     [[ -x "${SERVER_DIR}/launch_server.sh" ]] || { error "Media server launcher not found: ${SERVER_DIR}/launch_server.sh"; ((errors++)); }
     # A warning, not an error: a graph that only uses server_url never launches a server.
-    [[ -f "${METAL_HOME}/python_env/bin/activate" ]] || warn "No built tt-metal at ${METAL_HOME}; set TT_METAL_HOME or nodes cannot start a server"
+    [[ -f "${METAL_HOME}/python_env/bin/activate" ]] || warn "No built tt-metal at ${METAL_HOME}; run scripts/setup_tt_metal.sh or set TT_METAL_HOME"
+    local pin
+    pin="$(sed -n 's/^commit=//p' "${SCRIPT_DIR}/../TT_METAL_REF" 2>/dev/null || true)"
+    if [[ -n "${pin}" && -d "${METAL_HOME}" ]] && ! git -C "${METAL_HOME}" merge-base --is-ancestor "${pin}" HEAD 2>/dev/null; then
+        warn "tt-metal at ${METAL_HOME} does not contain the pinned commit ${pin:0:11} (TT_METAL_REF); run scripts/setup_tt_metal.sh"
+    fi
     if [[ ${errors} -gt 0 ]]; then error "Validation failed with ${errors} error(s)"; exit 1; fi
     success "All prerequisites validated"
 }
