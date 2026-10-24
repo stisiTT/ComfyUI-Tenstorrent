@@ -40,6 +40,7 @@ the tt-metal server for you. You do not launch the server by hand.
   | Model   | Board (default)        | Notes |
   |---------|------------------------|-------|
   | SDXL    | `p150` (1 chip; uses up to 4) | image generation |
+  | SD3.5 Large | Wormhole LoudBox (8 chips) | image generation; not testable on a QuietBox |
   | Wan 2.2 | `p300x2` (QuietBox 2)  | text-to-video |
   | LTX-2.3 | `p300x2` (QuietBox 2)  | text-to-video with audio |
   | MiniMax-H3 | `p300x2` (QuietBox 2) | text- or image-to-video with audio |
@@ -59,13 +60,12 @@ the tt-metal server for you. You do not launch the server by hand.
 
 ## 2. Clone
 
-Three checkouts: stock ComfyUI, tt-metal next to it, and this package inside
-ComfyUI's `custom_nodes/`.
+Three checkouts: stock ComfyUI, this package inside ComfyUI's `custom_nodes/`,
+and tt-metal next to ComfyUI (section 3 clones it for you).
 
 ```bash
 cd ~/src                 # or wherever you keep checkouts
 git clone https://github.com/Comfy-Org/ComfyUI.git
-git clone https://github.com/tenstorrent/tt-metal.git
 git clone https://github.com/stisiTT/ComfyUI-Tenstorrent.git ComfyUI/custom_nodes/ComfyUI-Tenstorrent
 ```
 
@@ -92,11 +92,28 @@ set `TT_METAL_HOME` to it.
 The media server needs tt-metal changes that are **not on `main`** yet:
 per-component LoRA ([PR #47509](https://github.com/tenstorrent/tt-metal/pull/47509),
 still open), the LTX-2.3 QuietBox 2 and LoRA work, and a MiniMax-H3 fix. The
-branch below carries them on top of a recent `main`. Check it out, init
-submodules, then build.
+branch and commit that carry them on top of a recent `main` are pinned in
+[`TT_METAL_REF`](TT_METAL_REF).
+
+One script does the whole section:
 
 ```bash
-cd ~/src/tt-metal
+~/src/ComfyUI/custom_nodes/ComfyUI-Tenstorrent/scripts/setup_tt_metal.sh
+```
+
+It clones tt-metal into `~/src/tt-metal` (or reuses a checkout already there),
+checks out the pinned commit, then asks before installing system packages with
+sudo, before the build, and before creating `python_env`. A checkout that
+already contains the pinned commit is left on its branch; one with local
+changes is never touched. `--yes` answers every prompt, `--skip-deps` skips the
+sudo step, and `--metal-home DIR` uses another location.
+
+The same steps by hand:
+
+```bash
+cd ~/src
+git clone https://github.com/tenstorrent/tt-metal.git
+cd tt-metal
 git checkout stisi/comfyui_20261023_main
 git submodule update --init --recursive
 
@@ -159,6 +176,7 @@ compute; ComfyUI only orchestrates). Open the web UI,
 build a graph starting from **TT Checkpoint Loader**, and pick a model:
 
 - `sdxl` → image graph: `TT KSampler` → `TT VAE Decode` → Save Image
+- `sd35` → the same image graph, txt2img only (LoudBox only)
 - `wan22` → video graph: `TT Wan Sampler` → `TT VAE Decode` → Create Video
 - `ltx` / `ltx_pro` → `TT LTX Video` / `TT LTX Video Pro` → `TT Preview Video`
 - `h3` → `TT H3 Video` (optionally fed a first and/or last frame) → `TT Preview Video`
@@ -178,15 +196,16 @@ Opening a template gives you an unsaved copy; save it to keep your edits.
 | Workflow | Model | Needs |
 |---|---|---|
 | `tt_sdxl_photoshop` | SDXL txt2img | nothing extra |
-| `tt_sdxl_img2img` | SDXL img2img | an input image, uploaded in the Load Image node |
+| `tt_sdxl_img2img` | SDXL img2img | nothing extra; starts from a bundled example image (swap in your own in Load Image) |
 | `tt_sdxl_img2img_photoshop` | SDXL img2img | the SD-PPP plugin (below) |
+| `tt_sd35_txt2img` | SD3.5 Large txt2img | an 8-chip Wormhole LoudBox |
 | `tt_shutdown_reset` | any | nothing; stops the server and resets the boards |
 | `load_tt_wan_standalone` | Wan 2.2 | nothing extra |
 | `load_tt_wan_standalone_lora` | Wan 2.2 + Lightning | Wan LoRA files (below) |
 | `load_tt_ltx_standalone` | LTX-2.3 | nothing extra for the distilled path |
 | `load_tt_ltx_matrix`, `load_tt_ltx_lora_gallery` | LTX-2.3 + style LoRAs | LTX LoRA files (below) |
 | `load_tt_h3_standalone` | MiniMax-H3 text to video | nothing extra |
-| `load_tt_h3_first_frame` | MiniMax-H3 image to video | a still image, uploaded in the Load Image node (an SDXL render works well) |
+| `load_tt_h3_first_frame` | MiniMax-H3 image to video | nothing extra; animates the same bundled image (an SDXL render of your own works well) |
 | `tt_h3_cat_sunbeam` | MiniMax-H3 text to video | nothing extra; a 6 s showcase prompt in the guide format H3 was trained on (description, soundscape, music) |
 | `tt_h3_dragon_castle` | MiniMax-H3 text to video | nothing extra; a 6 s showcase with a landing, a roar and an orchestral score |
 

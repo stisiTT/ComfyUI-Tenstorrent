@@ -55,6 +55,7 @@ All read by `server_manager.py`; every default is overridable:
 | `TT_SERVER_HOST`    | `127.0.0.1`                              | Host the tt-metal server binds / is reached on |
 | `TT_SERVER_PORT`    | `8000`                                   | Port for the tt-metal server |
 | `TT_SDXL_BOARD`     | `p150`                                   | Board passed to `launch_server.sh` for SDXL |
+| `TT_SD35_BOARD`     | `n300x4`                                 | Label only: SD3.5 always opens a LoudBox's 2x4 mesh |
 | `TT_WAN22_BOARD`    | `p300x2`                                 | Board passed to `launch_server.sh` for Wan 2.2 |
 | `TT_LTX_BOARD`, `TT_LTX_PRO_BOARD`, `TT_H3_BOARD` | `p300x2`   | Board passed to `launch_server.sh` for LTX-2.3 and MiniMax-H3 |
 | `TT_SERVER_READY_TIMEOUT` | `1800` (seconds)                   | How long to wait for `/health` during warmup |
@@ -101,6 +102,14 @@ backstops a kill of any tt-metal server the node left running.
             │ clip ─▶ [CLIP Text Encode] ─▶ TT KSampler (positive/negative)
             └ vae  ─────────────────────────────────────────▶ TT VAE Decode
 ```
+
+### Example: SD3.5 Large text-to-image
+
+Same graph as SDXL with `sd35` picked in the loader (`tt_sd35_txt2img`). The SD3.5
+server runs the whole pipeline in one call, so TT KSampler returns the finished
+image and TT VAE Decode passes it through. No LoRA and no img2img. SD3.5 needs
+an 8-chip Wormhole LoudBox; on any other machine the server refuses to start and
+the loader shows why.
 
 ### Example: Wan 2.2 text-to-video
 

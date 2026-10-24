@@ -4,7 +4,7 @@ This is the source of truth for how the pieces fit together and which tt-metal
 to run. If you only want to *use* the nodes, read `README.md` and `INSTALL.md`;
 this file is for keeping the moving parts in sync.
 
-Last updated: 2026-10-23.
+Last updated: 2026-10-24.
 
 ## The two repos and how they connect
 
@@ -33,7 +33,7 @@ with its history.
 | Repo | Branch | Notes |
 |------|--------|-------|
 | ComfyUI-Tenstorrent | `main` (stisiTT/ComfyUI-Tenstorrent) | These nodes plus `media_server/`, cloned into `custom_nodes/` of stock Comfy-Org/ComfyUI. |
-| tt-metal | `stisi/comfyui_20261023_main` | PR #47509's branch, the LTX-2.3 QuietBox 2 / LoRA / progress-event work, and a MiniMax-H3 SP=1 fix, merged with tt-metal `main` of 2026-10-23. Must be **built** (`./build_metal.sh`, `./create_venv.sh`). |
+| tt-metal | `stisi/comfyui_20261023_main`, commit pinned in [`TT_METAL_REF`](TT_METAL_REF) | PR #47509's branch, the LTX-2.3 QuietBox 2 / LoRA / progress-event work, and a MiniMax-H3 SP=1 fix, merged with tt-metal `main` of 2026-10-23. Must be **built** (`./build_metal.sh`, `./create_venv.sh`). |
 
 The server calls `fuse_lora(lora_scale, clip_scale)`, the signature PR #47509
 settled on after review. A tt-metal without it fails the first SDXL LoRA request
@@ -43,16 +43,22 @@ The HTTP request body still carries `lora_scale_unet` / `lora_scale_clip`.
 ### The tt-metal PRs the server depends on
 
 The runners import library code that is being upstreamed as separate PRs. The
-branch above contains all of them. Status as last checked:
+branch above contains all of them. Status as of 2026-10-24:
 
 | PR | What | Status |
 |----|------|--------|
-| [#46519](https://github.com/tenstorrent/tt-metal/pull/46519) | LoRA (Parshwa's) | merged |
-| [#47509](https://github.com/tenstorrent/tt-metal/pull/47509) | SDXL per-component LoRA (UNet/CLIP scales + text-encoder LoRA) | open, critical path |
-| [#47265](https://github.com/tenstorrent/tt-metal/pull/47265) | Wan 2.2 per-request guidance (`flow_shift`, `boundary_ratio`, `guidance_scale`) | open |
-| [#47715](https://github.com/tenstorrent/tt-metal/pull/47715) | DenoiseStep per-step progress events (the ComfyUI progress bar) | open |
-| [#48616](https://github.com/tenstorrent/tt-metal/pull/48616) | DeviceClass primitive | open |
-| [#47510](https://github.com/tenstorrent/tt-metal/pull/47510) | Standalone media server | **not going into tt-metal**; the server lives in this repo |
+| [#46519](https://github.com/tenstorrent/tt-metal/pull/46519) | Wan 2.2 LoRA (Parshwa's) | merged |
+| [#47265](https://github.com/tenstorrent/tt-metal/pull/47265) | Wan 2.2 per-request guidance (`flow_shift`, `boundary_ratio`, `guidance_scale`) | merged |
+| [#47715](https://github.com/tenstorrent/tt-metal/pull/47715) | Wan per-step progress events (the ComfyUI progress bar) | merged |
+| [#56674](https://github.com/tenstorrent/tt-metal/pull/56674) | LTX-2.3 per-stage transformer state fix | merged |
+| [#47509](https://github.com/tenstorrent/tt-metal/pull/47509) | SDXL per-component LoRA (UNet/CLIP scales + text-encoder LoRA) | open, critical path; waiting on a reply to review |
+| [#56585](https://github.com/tenstorrent/tt-metal/pull/56585) | Hang loading a tensor over 32 MiB from a cache file | open, needs a rebase |
+| [#48616](https://github.com/tenstorrent/tt-metal/pull/48616) | DeviceClass primitive | closed; `media_server/device_specs.py` keeps its own copy |
+| [#47510](https://github.com/tenstorrent/tt-metal/pull/47510) | Standalone media server | closed; the server lives in this repo |
+
+Not in any PR yet: LTX-2.3 on a QuietBox 2 (2x2 mesh), LTX progress events,
+several LoRAs bound at once, per-modality CFG rescale for LTX, and the MiniMax-H3
+prompt padding fix for meshes without sequence parallelism.
 
 ## How to run
 
@@ -66,24 +72,15 @@ Then pick a model in the **TT Checkpoint Loader** node. It runs
 `media_server/launch_server.sh --model <model> --board <board>`, polls
 `/health`, and the nodes' requests hit `server.py`. Board defaults: SDXL →
 `p150`; Wan 2.2, LTX-2.3 and MiniMax-H3 → `p300x2` (override with
-`TT_SDXL_BOARD` / `TT_WAN22_BOARD` / `TT_LTX_BOARD` / `TT_H3_BOARD`). See
+`TT_SDXL_BOARD` / `TT_WAN22_BOARD` / `TT_LTX_BOARD` / `TT_H3_BOARD`). SD3.5
+ignores the board and needs an 8-chip Wormhole LoudBox.
+
+`/health` reports the package version the server shipped with. The loader logs
+a warning when it differs from the nodes' version, which means the server came
+from another checkout (`server_url` or `TT_SERVER_DIR`). See
 [`INSTALL.md`](INSTALL.md) for the full setup and first-run times, and
 [`media_server/README.md`](media_server/README.md) to run the server by hand.
 
 ## What's still missing
 
-1. **tt-metal PRs.** Until #47509 and the LTX/H3 work land on `main`, the
-   nodes need the pinned branch above, and it has to be re-merged with `main`
-   by hand to pick up new models and fixes.
-2. **No HTTP contract version.** Nodes and server now ship together, which
-   covers the normal case, but a hand-started server from another checkout
-   (`server_url`, `TT_SERVER_DIR`) can still drift. Consider surfacing a
-   version in `/health`.
-3. **`sd35` is server-supported but not node-exposed.** `server.py` handles
-   `sd35`, but `TT_CheckpointLoader`'s `model_type` does not offer it. Add it if
-   SD3.5 is meant to be usable from the UI.
-4. **Convergence with tt-media-server.** tt-inference-server's OpenAI-style
-   `tt-media-server` serves more models on more hardware but has none of the
-   staged ops, LoRA stacking or progress streaming the nodes use. Upstreaming
-   those, or teaching the nodes to talk to it for plain generation, is the
-   longer-term path.
+Open work is tracked in [`NEXT_STEPS.md`](NEXT_STEPS.md).
