@@ -177,6 +177,15 @@ print(','.join(ids[:4]))
     fi
 
 elif [ "$MODEL" = "sd35" ]; then
+    # Read the chip type from sysfs too: with tt-smi missing or broken the count
+    # below is 0 and would let SD3.5 grab a Blackhole box it cannot run on.
+    if ls /sys/class/tenstorrent/*/device/device >/dev/null 2>&1 \
+       && ! grep -qx 0x401e /sys/class/tenstorrent/*/device/device; then
+        echo ""
+        echo "ERROR: SD3.5 runs only on a Wormhole LoudBox (8 chips, 2x4 mesh)."
+        echo "       This machine has no Wormhole chips."
+        exit 1
+    fi
     # SD3.5 requires 8 devices (2x4 mesh). Fail fast with a clear error if unavailable.
     if [ "${DETECTED_DEVICE_COUNT}" -gt 0 ] 2>/dev/null; then
         if [ "${DETECTED_DEVICE_COUNT}" -lt 8 ]; then

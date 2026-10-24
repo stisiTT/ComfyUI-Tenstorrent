@@ -276,9 +276,10 @@ class TT_CheckpointLoader:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "model_type": (["sdxl", "wan22", "ltx", "ltx_pro", "h3"], {
+                "model_type": (["sdxl", "sd35", "wan22", "ltx", "ltx_pro", "h3"], {
                     "default": "sdxl",
-                    "tooltip": "Model to stand up. sdxl -> image graph; wan22 -> video graph "
+                    "tooltip": "Model to stand up. sdxl -> image graph; sd35 -> SD3.5 Large image graph "
+                    "(TT_KSampler, txt2img only; needs an 8-chip Wormhole LoudBox); wan22 -> video graph "
                     "(TT_WanSampler or TT_TextToVideo); ltx -> audio+video graph (TT_LTXVideo); "
                     "ltx_pro -> guided audio+video graph (TT_LTXVideoPro), slower but takes CFG "
                     "and a live negative prompt; h3 -> MiniMax-H3 audio+video graph (TT_H3Video), "
@@ -629,9 +630,9 @@ class TT_KSampler:
                latent_image=None, denoise=1.0, unique_id=None) -> Tuple:
         if not hasattr(model, "client"):
             raise RuntimeError("TT_KSampler requires a Tenstorrent MODEL from TT_CheckpointLoader.")
-        if getattr(model, "model_type", None) != "sdxl":
+        if getattr(model, "model_type", None) not in ("sdxl", "sd35"):
             raise RuntimeError(
-                f"TT_KSampler supports the SDXL image path only (got '{getattr(model, 'model_type', None)}'). "
+                f"TT_KSampler supports the SDXL and SD3.5 image paths only (got '{getattr(model, 'model_type', None)}'). "
                 "For wan22, use the TT_TextToVideo node."
             )
 
@@ -674,6 +675,16 @@ class TT_KSampler:
             params["latent_image"] = tensor_to_b64npy(latent_image["samples"])
             params["denoise_strength"] = float(denoise)
             logger.info(f"  img2img: denoise={float(denoise)}, latent {tuple(latent_image['samples'].shape)}")
+
+        if model.model_type == "sd35":
+            # The SD3.5 server only runs the full pipeline: no staged ops, LoRA or img2img.
+            if "lora_path" in params:
+                raise RuntimeError("TT_KSampler: LoRA is not supported on sd35; remove the TT LoRA Loader.")
+            if "latent_image" in params:
+                raise RuntimeError("TT_KSampler: img2img is not supported on sd35; use denoise 1.0.")
+            params.pop("guidance_rescale", None)
+            images = client.generate_image(**params)
+            return ({"samples": images, "tt_already_decoded": True},)
 
         progress_callback = build_denoise_progress_callback(int(steps), unique_id)
 

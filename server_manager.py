@@ -39,6 +39,8 @@ logger = logging.getLogger("tenstorrent_nodes.server_manager")
 # Default board per model (overridable via env).
 MODEL_BOARDS = {
     "sdxl": os.getenv("TT_SDXL_BOARD", "p150"),
+    # SD3.5 only runs on a LoudBox's 2x4 mesh; launch_server.sh ignores the board.
+    "sd35": os.getenv("TT_SD35_BOARD", "n300x4"),
     "wan22": os.getenv("TT_WAN22_BOARD", "p300x2"),
     "ltx": os.getenv("TT_LTX_BOARD", "p300x2"),
     "ltx_pro": os.getenv("TT_LTX_PRO_BOARD", "p300x2"),
