@@ -24,6 +24,7 @@ import atexit
 import json
 import logging
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -74,6 +75,22 @@ if not os.getenv("TT_SERVER_DIR") and os.getenv("TT_METAL_DIR"):
 # The built tt-metal checkout the server imports ttnn from: the documented
 # sibling layout, <parent>/ComfyUI next to <parent>/tt-metal.
 TT_METAL_HOME = os.getenv("TT_METAL_HOME") or os.path.join(os.path.dirname(_COMFYUI_ROOT), "tt-metal")
+
+
+def _package_version() -> str:
+    try:
+        with open(os.path.join(_PACKAGE_DIR, "pyproject.toml")) as f:
+            match = re.search(r'^version\s*=\s*"([^"]+)"', f.read(), re.M)
+        return match.group(1) if match else "unknown"
+    except OSError:
+        return "unknown"
+
+
+# The server reports the version of the package it ships in; a mismatch means
+# the nodes are talking to a server from another checkout.
+PACKAGE_VERSION = _package_version()
+_version_warned = set()
+
 DEFAULT_HOST = os.getenv("TT_SERVER_HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.getenv("TT_SERVER_PORT", "8000"))
 PID_FILE = os.getenv("TT_SERVER_PID_FILE", "/tmp/tt_comfy_server.pid")
@@ -658,6 +675,18 @@ def ensure_server(model: str, board: Optional[str] = None,
 
 def get_generation() -> int:
     return _manager.get_generation()
+
+
+def check_server_version(health: dict, base_url: str) -> None:
+    """Warn once per server when it was not shipped with these nodes."""
+    version = (health or {}).get("version")
+    if version == PACKAGE_VERSION or (base_url, version) in _version_warned:
+        return
+    _version_warned.add((base_url, version))
+    logger.warning(
+        f"Server at {base_url} reports version {version or 'none (older than 0.3.0)'} but these nodes are "
+        f"{PACKAGE_VERSION}. It was started from another checkout; requests may fail if the API changed."
+    )
 
 
 def current_model_label(base_url: Optional[str] = None) -> str:

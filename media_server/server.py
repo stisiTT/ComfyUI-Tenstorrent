@@ -3,6 +3,7 @@
 # SPDX-FileCopyrightText: © 2025 Tenstorrent AI ULC
 
 import os
+import re
 import sys
 import uuid
 import time
@@ -27,6 +28,19 @@ from utils.image_utils import pil_to_base64, ndarray_to_b64npy, b64npy_to_ndarra
 from utils.cache_utils import validate_cache, log_cache_info
 
 from device_specs import DeviceClass, validate_model_board
+
+
+def _package_version() -> str:
+    """Version of the ComfyUI-Tenstorrent package this server ships in."""
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "pyproject.toml")) as f:
+            match = re.search(r'^version\s*=\s*"([^"]+)"', f.read(), re.M)
+        return match.group(1) if match else "unknown"
+    except OSError:
+        return "unknown"
+
+
+SERVER_VERSION = _package_version()
 
 
 def parse_args():
@@ -994,6 +1008,7 @@ async def health_check():
     return {
         "status": "healthy" if alive_workers > 0 else "unhealthy",
         "model": model_label,
+        "version": SERVER_VERSION,
         "workers_alive": alive_workers,
         "workers_total": config.num_workers,
         "queue_size": task_queue.qsize() if task_queue else 0,

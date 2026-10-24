@@ -363,6 +363,7 @@ class TT_CheckpointLoader:
         logger.info(f"Server healthy={status}, serving model='{served}', workers={health.get('workers_alive')}")
         if status != "healthy":
             raise RuntimeError(f"tt-metal server at {base_url} is not healthy: {health}")
+        server_manager.check_server_version(health, base_url)
 
         model = TTModelWrapper(client, model_type, server_info=health)
         clip = TTCLIPWrapper(client, model_type, server_info=health)
