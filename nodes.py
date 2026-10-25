@@ -1528,10 +1528,8 @@ class TT_UnloadModel:
     @classmethod
     def INPUT_TYPES(cls):
         return {
-            "required": {
-                "model": ("MODEL", {"tooltip": "Model to release"}),
-            },
             "optional": {
+                "model": ("MODEL", {"tooltip": "Optional; the server is stopped whichever model it serves"}),
                 "reset_board": ("BOOLEAN", {
                     "default": False,
                     "tooltip": "Danger: after stopping the server, run a tt-smi reset of ALL Tenstorrent boards on this host",
@@ -1545,7 +1543,13 @@ class TT_UnloadModel:
     OUTPUT_NODE = True
     DESCRIPTION = "Stop the tt-metal server; optionally reset all Tenstorrent boards"
 
-    def unload(self, model, reset_board: bool = False) -> Tuple:
+    @classmethod
+    def IS_CHANGED(cls, model=None, reset_board: bool = False):
+        # With no loader feeding it, the inputs never change, and a cached result
+        # would make every queue after the first a no-op.
+        return float("nan")
+
+    def unload(self, model=None, reset_board: bool = False) -> Tuple:
         logger.info("TT_UnloadModel: stopping tt-metal server (managed + PID-file fallback)...")
         server_manager.get_manager().stop_any()
         logger.info("TT_UnloadModel: server stopped.")

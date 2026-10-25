@@ -2,68 +2,97 @@
   "id": "bcb6f7be-5c1c-4bac-8f7c-e02d7c369f01",
   "revision": 0,
   "last_node_id": 3,
-  "last_link_id": 1,
+  "last_link_id": 0,
   "nodes": [
     {
-      "id": 1,
-      "type": "TT_CheckpointLoader",
-      "pos": [60, 160],
-      "size": [320, 146],
+      "id": 2,
+      "type": "TT_UnloadModel",
+      "pos": [
+        60,
+        160
+      ],
+      "size": [
+        300,
+        58
+      ],
       "flags": {},
       "order": 0,
       "mode": 0,
       "inputs": [
-        {"localized_name": "model_type", "name": "model_type", "type": "COMBO", "widget": {"name": "model_type"}, "link": null},
-        {"localized_name": "board", "name": "board", "shape": 7, "type": "STRING", "widget": {"name": "board"}, "link": null},
-        {"localized_name": "server_url", "name": "server_url", "shape": 7, "type": "STRING", "widget": {"name": "server_url"}, "link": null}
-      ],
-      "outputs": [
-        {"localized_name": "model", "name": "model", "type": "MODEL", "links": [1]},
-        {"localized_name": "clip", "name": "clip", "type": "CLIP", "links": []},
-        {"localized_name": "vae", "name": "vae", "type": "VAE", "links": []}
-      ],
-      "title": "Attach to running TT server (no standup)",
-      "properties": {"Node name for S&R": "TT_CheckpointLoader"},
-      "widgets_values": ["sdxl", "", "http://127.0.0.1:8000"]
-    },
-    {
-      "id": 2,
-      "type": "TT_UnloadModel",
-      "pos": [440, 160],
-      "size": [300, 58],
-      "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [
-        {"localized_name": "model", "name": "model", "type": "MODEL", "link": 1},
-        {"localized_name": "reset_board", "name": "reset_board", "shape": 7, "type": "BOOLEAN", "widget": {"name": "reset_board"}, "link": null}
+        {
+          "localized_name": "model",
+          "name": "model",
+          "type": "MODEL",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "localized_name": "reset_board",
+          "name": "reset_board",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "reset_board"
+          },
+          "link": null
+        }
       ],
       "outputs": [],
       "title": "Stop TT server + reset all boards",
-      "properties": {"Node name for S&R": "TT_UnloadModel"},
-      "widgets_values": [true]
+      "properties": {
+        "Node name for S&R": "TT_UnloadModel"
+      },
+      "widgets_values": [
+        true
+      ]
     },
     {
       "id": 3,
       "type": "Note",
-      "pos": [60, 360],
-      "size": [680, 200],
+      "pos": [
+        60,
+        360
+      ],
+      "size": [
+        680,
+        200
+      ],
       "flags": {},
-      "order": 2,
+      "order": 1,
       "mode": 0,
       "inputs": [],
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "TT shutdown + board reset. Queue this on its own when you are done generating.\n\n- server_url points at the media server ComfyUI started on the default port 8000 (change it if you set TT_SERVER_PORT), so the loader attaches to it and never spins up a new one.\n- Works whatever model is loaded (sdxl, wan22, ltx): model_type is ignored when server_url is set.\n- If no server is running, the loader errors with 'Could not reach tt-metal server'. That means there was nothing to stop; the boards were not reset. Reset by hand with tt-smi -r if needed.\n- reset_board=true resets ALL Tenstorrent boards on the host. Make sure nothing else (e.g. a tt-model container) is using them."
+        "TT shutdown + board reset. Queue this on its own when you are done generating, or when a server crashed or a start failed and the boards look stuck.\n\n- Stops whatever media server is running, whichever model it serves; with none running it just resets.\n- reset_board=true resets ALL Tenstorrent boards on the host. Make sure nothing else (e.g. a tt-model container) is using them."
       ]
     }
   ],
-  "links": [[1, 1, 0, 2, 0, "MODEL"]],
+  "links": [],
   "groups": [
-    {"id": 1, "title": "Shutdown TT server", "bounding": [30, 80, 740, 250], "color": "#a1309b", "flags": {}}
+    {
+      "id": 1,
+      "title": "Shutdown TT server",
+      "bounding": [
+        30,
+        80,
+        740,
+        250
+      ],
+      "color": "#a1309b",
+      "flags": {}
+    }
   ],
   "config": {},
-  "extra": {"ds": {"scale": 1, "offset": [0, 0]}, "frontendVersion": "1.45.15"},
+  "extra": {
+    "ds": {
+      "scale": 1,
+      "offset": [
+        0,
+        0
+      ]
+    },
+    "frontendVersion": "1.45.15"
+  },
   "version": 0.4
 }
