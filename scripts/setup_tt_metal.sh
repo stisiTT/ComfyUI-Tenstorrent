@@ -8,8 +8,10 @@
 # Set up the tt-metal the media server runs against
 #
 # Clones tt-metal next to ComfyUI (or reuses the checkout already there), checks
-# out the commit pinned in TT_METAL_REF, installs system packages, builds, and
-# creates tt-metal's python_env. Asks before each slow or sudo step.
+# out the commit pinned in TT_METAL_REF, installs system packages, builds,
+# creates tt-metal's python_env, and installs the media server's dependencies
+# into it. Asks before each slow or sudo step. Declining the build on an
+# already-built checkout still installs the server dependencies.
 #
 # An existing checkout is never moved off a commit that already contains the
 # pin, and never touched if it has local changes.
@@ -43,7 +45,7 @@ warn()    { echo -e "\033[0;33m[WARN]\033[0m $*"; }
 error()   { echo -e "\033[0;31m[ERROR]\033[0m $*" >&2; }
 status()  { echo -e "\033[1;34m===> $*\033[0m"; }
 
-show_help() { sed -n '8,26p' "$0" | sed 's/^# \{0,1\}//'; }
+show_help() { sed -n '8,27p' "$0" | sed 's/^# \{0,1\}//'; }
 
 # Never moves an existing local branch: one by the pinned name is only reused
 # when it already contains the pin, otherwise the pin is checked out detached.
@@ -121,13 +123,35 @@ else
     info "Skipping system packages; the build fails if any are missing."
 fi
 
-confirm "Build tt-metal now? (10 minutes or more)" || { info "Stopped before building."; exit 0; }
-./build_metal.sh
+if confirm "Build tt-metal now? (10 minutes or more)"; then
+    ./build_metal.sh
+elif [[ -f python_env/bin/activate ]]; then
+    info "Skipping the build; using the existing build and python_env."
+else
+    info "Stopped before building."
+    exit 0
+fi
 
 if [[ -f python_env/bin/activate ]]; then
     info "python_env already exists; keeping it."
 else
     ./create_venv.sh
+fi
+
+#===============================================================================
+# Server dependencies
+#===============================================================================
+# python_env is created by uv and has no pip, so install with uv. Fall back to
+# bootstrapping pip via ensurepip only if uv is unavailable.
+VENV_PY="${METAL_HOME}/python_env/bin/python"
+REQ_FILE="${PACKAGE_DIR}/media_server/requirements-server.txt"
+status "Installing the media server's dependencies into python_env"
+UV_BIN="$(command -v uv || echo "${HOME}/.local/bin/uv")"
+if [[ -x "${UV_BIN}" ]]; then
+    "${UV_BIN}" pip install --python "${VENV_PY}" -r "${REQ_FILE}"
+else
+    "${VENV_PY}" -m ensurepip --upgrade >/dev/null 2>&1 || true
+    "${VENV_PY}" -m pip install -r "${REQ_FILE}"
 fi
 
 success "tt-metal is ready at ${METAL_HOME}"

@@ -73,22 +73,14 @@ fi
 source "${TT_METAL_HOME}/python_env/bin/activate"
 
 # ---------------------------------------------------------------------------
-# Install server-only dependencies (kept out of tt-metal's requirements-dev.txt
-# so this server is a zero-edit overlay on the upstream environment)
+# Server-only dependencies (requirements-server.txt) are installed into
+# python_env by scripts/setup_tt_metal.sh, never at launch
 # ---------------------------------------------------------------------------
 if ! python -c "import fastapi, uvicorn" 2>/dev/null; then
-    echo "Installing server dependencies from requirements-server.txt..."
-    VENV_PY="${TT_METAL_HOME}/python_env/bin/python"
-    REQ_FILE="${SERVER_DIR}/requirements-server.txt"
-    # python_env is created by uv and has no pip, so install with uv. Fall back to
-    # bootstrapping pip via ensurepip only if uv is unavailable.
-    UV_BIN="$(command -v uv || echo "${HOME}/.local/bin/uv")"
-    if [ -x "${UV_BIN}" ]; then
-        "${UV_BIN}" pip install --python "${VENV_PY}" -r "${REQ_FILE}"
-    else
-        "${VENV_PY}" -m ensurepip --upgrade >/dev/null 2>&1 || true
-        "${VENV_PY}" -m pip install -r "${REQ_FILE}"
-    fi
+    echo "Error: server dependencies (fastapi, uvicorn) are missing from ${TT_METAL_HOME}/python_env"
+    echo "Run scripts/setup_tt_metal.sh in ComfyUI-Tenstorrent to install them"
+    echo "(answer no to the build if tt-metal is already built)."
+    exit 1
 fi
 
 # ---------------------------------------------------------------------------

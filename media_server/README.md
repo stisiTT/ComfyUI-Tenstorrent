@@ -23,9 +23,10 @@ when a TT Checkpoint Loader node asks for a model, and stops it on a model
 switch or when ComfyUI exits.
 
 `launch_server.sh` needs `TT_METAL_HOME`, a built tt-metal checkout. It
-activates that checkout's `python_env`, installs `requirements-server.txt`
-into it once, and runs `server.py` with both tt-metal and this directory on
-`PYTHONPATH`. The nodes default `TT_METAL_HOME` to the `tt-metal` checkout next
+activates that checkout's `python_env` and runs `server.py` with both
+tt-metal and this directory on `PYTHONPATH`. `requirements-server.txt` must
+already be installed in that `python_env`; `scripts/setup_tt_metal.sh` does
+it, and the launcher stops with a pointer to that script if it is missing. The nodes default `TT_METAL_HOME` to the `tt-metal` checkout next
 to ComfyUI.
 
 ## Running it by hand
