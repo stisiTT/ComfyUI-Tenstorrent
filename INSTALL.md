@@ -103,7 +103,9 @@ One script does the whole section:
 
 It clones tt-metal into `~/src/tt-metal` (or reuses a checkout already there),
 checks out the pinned commit, then asks before installing system packages with
-sudo, before the build, and before creating `python_env`. A checkout that
+sudo and before the build. It then creates `python_env` and installs the media
+server's dependencies (`fastapi`, `uvicorn`) into it. Declining the build on an
+already-built checkout skips straight to those steps. A checkout that
 already contains the pinned commit is left on its branch; one with local
 changes is never touched. `--yes` answers every prompt, `--skip-deps` skips the
 sudo step, and `--metal-home DIR` uses another location.
@@ -125,11 +127,15 @@ git submodule update --init --recursive
 
 # Create the tt-metal Python environment (./python_env, via uv).
 ./create_venv.sh
+
+# The media server's own dependencies.
+uv pip install --python python_env/bin/python \
+    -r ~/src/ComfyUI/custom_nodes/ComfyUI-Tenstorrent/media_server/requirements-server.txt
 ```
 
-You do **not** need to activate `python_env` yourself or install the server's
-`fastapi`/`uvicorn` deps — `launch_server.sh` does that automatically when the
-node starts the server.
+You do **not** need to activate `python_env` yourself; `launch_server.sh` does
+that when the node starts the server. If the server dependencies are missing,
+the launch stops and says to run the setup script.
 
 ---
 

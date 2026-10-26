@@ -1,8 +1,13 @@
 # Tenstorrent Custom Nodes for ComfyUI
 
-Custom nodes for running Stable Diffusion XL (image), and Wan 2.2, LTX-2.3 and
-MiniMax-H3 (video) on Tenstorrent hardware via a tt-metal HTTP inference server
-that ships in this package (`media_server/`).
+Custom nodes for running Stable Diffusion XL and SD3.5 (image), and Wan 2.2,
+LTX-2.3 and MiniMax-H3 (video) on Tenstorrent hardware via a tt-metal HTTP
+inference server that ships in this package (`media_server/`).
+
+> **Requires Tenstorrent hardware on Linux** and a tt-metal build, which
+> [`scripts/setup_tt_metal.sh`](scripts/setup_tt_metal.sh) sets up (see
+> [`INSTALL.md`](INSTALL.md)). On a GPU- or CPU-only machine the nodes load but
+> cannot generate anything.
 
 ## How it works
 
@@ -30,13 +35,32 @@ is the subprocess launch + the local HTTP socket.
 - **First launch is slow.** Initial warmup includes trace capture: ~5–10 min for
   SDXL, ~15–25 min for Wan 2.2. The node blocks until `/health` reports healthy.
 
+## What this package runs on your machine
+
+Besides the nodes themselves, the package starts other programs:
+
+- **The media server.** When a TT Checkpoint Loader needs a model,
+  `server_manager.py` runs `media_server/launch_server.sh` as a subprocess. It
+  runs under tt-metal's `python_env` and serves HTTP on `127.0.0.1:8000`
+  (`TT_SERVER_HOST` / `TT_SERVER_PORT`). It is stopped on a model switch, by
+  the TT Kill Server node, and when ComfyUI exits.
+- **Model downloads.** On first use of a model the server downloads its
+  weights from Hugging Face into `~/.cache/huggingface`.
+- **Board resets.** `tt-smi -r` (or the same reset in-process via tt-smi's
+  library) resets the Tenstorrent boards when TT Kill Server's `reset_board` is
+  on, or before a launch when the last server left the device wedged.
+
+Nothing is installed at runtime. The server's own dependencies go into
+tt-metal's `python_env` when you run `scripts/setup_tt_metal.sh`.
+
 ## Prerequisites
 
 1. **Tenstorrent hardware** with drivers/firmware installed (e.g. via
    `tt-installer`), and `tt-smi` available on `PATH`.
-2. **A built tt-metal checkout** on the branch named in
-   [`INSTALL.md`](./INSTALL.md), with its `python_env` created
-   (`./create_venv.sh`). The server imports `ttnn` and `models.*` from it. By
+2. **A built tt-metal checkout** at the commit pinned in `TT_METAL_REF`, with
+   its `python_env` and the server's dependencies.
+   `scripts/setup_tt_metal.sh` clones, builds and prepares it (see
+   [`INSTALL.md`](./INSTALL.md)). The server imports `ttnn` and `models.*` from it. By
    default the nodes look for it next to ComfyUI (`../tt-metal`); override with
    `TT_METAL_HOME`. [`INTEGRATION.md`](./INTEGRATION.md) has the tt-metal PR
    breakdown.
