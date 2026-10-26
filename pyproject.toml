@@ -2,7 +2,7 @@
 name = "comfyui-tenstorrent"
 description = "ComfyUI nodes that run SDXL, Wan 2.2, LTX-2.3 and MiniMax-H3 on Tenstorrent hardware through a bundled media server."
 version = "0.3.0"
-license = { text = "Apache-2.0" }
+license = { file = "LICENSE" }
 dependencies = [
     "requests",
     "tt-smi",
