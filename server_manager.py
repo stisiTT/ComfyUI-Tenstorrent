@@ -493,8 +493,9 @@ class _ServerManager:
             raise RuntimeError(f"launch_server.sh not found at {script} (set TT_SERVER_DIR)")
         if not os.path.isfile(os.path.join(TT_METAL_HOME, "python_env", "bin", "activate")):
             raise RuntimeError(
-                f"No built tt-metal at {TT_METAL_HOME} (python_env missing). Build tt-metal there "
-                "(see INSTALL.md) or set TT_METAL_HOME to your built checkout."
+                f"No built tt-metal at {TT_METAL_HOME} (python_env missing). Run "
+                f"{os.path.join(_PACKAGE_DIR, 'scripts', 'setup_tt_metal.sh')} to set it up "
+                "(see INSTALL.md), or set TT_METAL_HOME to your built checkout."
             )
 
         # Make sure no stale process holds the boards and reset them if the last

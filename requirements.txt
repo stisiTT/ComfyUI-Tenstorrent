@@ -4,7 +4,8 @@ requests
 # Tenstorrent board reset (TT Kill Server node, reset_board option).
 # Native/Rust-backed; pinned to match tt-smi (see tt-smi/pyproject.toml).
 # Used in-process by server_manager.reset_all_boards().
-tt-smi
-pyluwen~=0.8.0
-tt-umd==0.9.3
-tt_tools_common~=1.6.0
+# Linux only; there are no wheels for other platforms.
+tt-smi; sys_platform == 'linux'
+pyluwen~=0.8.0; sys_platform == 'linux'
+tt-umd==0.9.3; sys_platform == 'linux'
+tt_tools_common~=1.6.0; sys_platform == 'linux'
