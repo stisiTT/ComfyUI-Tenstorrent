@@ -1,0 +1,5 @@
+# Kept in the repo, left out of the ComfyUI Registry package.
+tests/
+INTEGRATION.md
+media_server/image_test.py
+scripts/launch_subprocess_mode.sh
