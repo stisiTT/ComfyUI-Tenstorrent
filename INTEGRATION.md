@@ -83,4 +83,8 @@ from another checkout (`server_url` or `TT_SERVER_DIR`). See
 
 ## What's still missing
 
-Open work is tracked in [`NEXT_STEPS.md`](NEXT_STEPS.md).
+- A listing on the ComfyUI Registry, so the nodes install from ComfyUI-Manager.
+- A prebuilt tt-metal, so setup no longer builds from source.
+- Faster model switches; each switch restarts the server today.
+- Compatibility with tt-media-server's OpenAI-style API, so the nodes can use
+  a shared remote server.
