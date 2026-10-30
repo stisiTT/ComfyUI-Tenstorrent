@@ -4,7 +4,7 @@ This is the source of truth for how the pieces fit together and which tt-metal
 to run. If you only want to *use* the nodes, read `README.md` and `INSTALL.md`;
 this file is for keeping the moving parts in sync.
 
-Last updated: 2026-10-24.
+Last updated: 2026-10-30.
 
 ## The two repos and how they connect
 
@@ -43,7 +43,7 @@ The HTTP request body still carries `lora_scale_unet` / `lora_scale_clip`.
 ### The tt-metal PRs the server depends on
 
 The runners import library code that is being upstreamed as separate PRs. The
-branch above contains all of them. Status as of 2026-10-24:
+branch above contains all of them. Status as of 2026-10-30:
 
 | PR | What | Status |
 |----|------|--------|
@@ -51,7 +51,7 @@ branch above contains all of them. Status as of 2026-10-24:
 | [#47265](https://github.com/tenstorrent/tt-metal/pull/47265) | Wan 2.2 per-request guidance (`flow_shift`, `boundary_ratio`, `guidance_scale`) | merged |
 | [#47715](https://github.com/tenstorrent/tt-metal/pull/47715) | Wan per-step progress events (the ComfyUI progress bar) | merged |
 | [#56674](https://github.com/tenstorrent/tt-metal/pull/56674) | LTX-2.3 per-stage transformer state fix | merged |
-| [#47509](https://github.com/tenstorrent/tt-metal/pull/47509) | SDXL per-component LoRA (UNet/CLIP scales + text-encoder LoRA) | open, critical path; waiting on a reply to review |
+| [#47509](https://github.com/tenstorrent/tt-metal/pull/47509) | SDXL per-component LoRA (UNet/CLIP scales + text-encoder LoRA) | open, critical path; review addressed and CI green, waiting on code-owner approval. The pinned branch carries the PR as of 2026-10-23, before the follow-up that moved the remaining text-encoder code out of the UNet LoRA manager; SDXL output is bit-identical with and without it |
 | [#56585](https://github.com/tenstorrent/tt-metal/pull/56585) | Hang loading a tensor over 32 MiB from a cache file | open, needs a rebase |
 | [#48616](https://github.com/tenstorrent/tt-metal/pull/48616) | DeviceClass primitive | closed; `media_server/device_specs.py` keeps its own copy |
 | [#47510](https://github.com/tenstorrent/tt-metal/pull/47510) | Standalone media server | closed; the server lives in this repo |

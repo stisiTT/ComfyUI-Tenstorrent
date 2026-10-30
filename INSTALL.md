@@ -184,8 +184,8 @@ build a graph starting from **TT Checkpoint Loader**, and pick a model:
 - `sdxl` → image graph: `TT KSampler` → `TT VAE Decode` → Save Image
 - `sd35` → the same image graph, txt2img only (LoudBox only)
 - `wan22` → video graph: `TT Wan Sampler` → `TT VAE Decode` → Create Video
-- `ltx` / `ltx_pro` → `TT LTX Video` / `TT LTX Video Pro` → `TT Preview Video`
-- `h3` → `TT H3 Video` (optionally fed a first and/or last frame) → `TT Preview Video`
+- `ltx` / `ltx_pro` → `TT LTX Video (AV)` / `TT LTX Video Pro (AV)` → `TT Preview Video`
+- `h3` → `TT H3 Video (AV)` (optionally fed a first and/or last frame) → `TT Preview Video`
 
 Or start from one of the example workflows in the next section. See
 [`README.md`](README.md) for the full node reference and the
@@ -310,7 +310,7 @@ so open each Photoshop template and save it first, or copy its JSON from
 | Port `:8000` already in use | Set `TT_SERVER_PORT`. The web UI port (`--port`, default 8188) is separate. |
 | Wan workflow reports `VHS_VideoCombine` missing | It is an older copy of the graph. Use the one from `example_workflows/`, which uses core Create Video instead, or install ComfyUI-VideoHelperSuite. |
 | LoRA dropdown is empty | The files are not under `ComfyUI/models/loras/` in the expected subfolder (`wan22/…`, `ltx/`); see section 6. |
-| Device wedged after a crash | `tt-smi -r` to reset, or use the **TT Unload Model** node's board-reset option. |
+| Device wedged after a crash | `tt-smi -r` to reset, or use the **TT Kill Server** node's `reset_board` option. |
 
 For the full list of configuration variables and per-node details, see the node
 [README](README.md).

@@ -33,7 +33,9 @@ is the subprocess launch + the local HTTP socket.
   `model_type` stops the running server and starts the new one (a multi-minute
   warmup each switch).
 - **First launch is slow.** Initial warmup includes trace capture: ~5–10 min for
-  SDXL, ~15–25 min for Wan 2.2. The node blocks until `/health` reports healthy.
+  SDXL, ~15 min for LTX-2.3, ~15–25 min for Wan 2.2, and ~15–20 min for
+  MiniMax-H3 (later standups ~2 min). The node blocks until `/health` reports
+  healthy.
 
 ## What this package runs on your machine
 
@@ -103,7 +105,7 @@ backstops a kill of any tt-metal server the node left running.
 
 | Node | Category | Purpose |
 |------|----------|---------|
-| **TT Checkpoint Loader** (`TT_CheckpointLoader`) | Tenstorrent | Stand up a tt-metal model (auto-launch server) and return `MODEL` / `CLIP` / `VAE` handles. Inputs: `model_type` (`sdxl`, `wan22`, `ltx`, `ltx_pro` or `h3`); optional `board` override and `server_url` (connect to an already-running server instead of auto-standup). |
+| **TT Checkpoint Loader** (`TT_CheckpointLoader`) | Tenstorrent | Stand up a tt-metal model (auto-launch server) and return `MODEL` / `CLIP` / `VAE` handles. Inputs: `model_type` (`sdxl`, `sd35`, `wan22`, `ltx`, `ltx_pro` or `h3`); optional `board` override and `server_url` (connect to an already-running server instead of auto-standup). |
 | **TT LoRA Loader** (`TT_LoraLoader`) | Tenstorrent | Attach a LoRA with separate UNet (`strength_model`) and CLIP (`strength_clip`) scales. Returns `MODEL` / `CLIP`. |
 | **TT Wan LoRA Loader** (`TT_WanLoraLoader`) | Tenstorrent/video | Attach per-expert Wan 2.2 LoRA paths (high/low) applied server-side. Returns `MODEL`. |
 | **TT KSampler** (`TT_KSampler`) | Tenstorrent/sampling | Run SDXL denoising on the server; returns `LATENT`. |
@@ -117,7 +119,7 @@ backstops a kill of any tt-metal server the node left running.
 | **TT LTX LoRA Loader** (`TT_LTXLoraLoader`) | Tenstorrent/video | Attach an LTX-2.3 LoRA, applied on device server-side. **Chainable** — wire several in series to stack them, each with its own strength. Adapters live in `models/loras/ltx/`. |
 | **TT Preview Video** (`TT_PreviewVideo`) | Tenstorrent/video | Show a `VIDEO` in the graph without writing to `output/`. The video counterpart of `Preview Image`: writes to ComfyUI's temp directory and renders a player. Never re-encodes. Works with any `VIDEO`, not just the TT nodes. |
 | **TT Model Info** (`TT_ModelInfo`) | Tenstorrent/utils | Display information about a TT model handle. |
-| **TT Unload Model** (`TT_UnloadModel`) | Tenstorrent/utils | Stop the tt-metal server; optionally reset all Tenstorrent boards. |
+| **TT Kill Server** (`TT_UnloadModel`) | Tenstorrent/utils | Stop the tt-metal server; optionally reset all Tenstorrent boards. |
 
 ### Example: SDXL text-to-image
 
@@ -259,8 +261,7 @@ render in the material, and what lifts the toon from rubbery to polished.
 Earlier testing that gave these adapters only their trigger token concluded they
 were inert. That conclusion was wrong -- the prompt was.
 
-Two workflows ship these findings (`user/default/workflows/`, which is *not* under
-version control -- copy them out if you need them to survive a rebuild):
+Two workflows ship these findings in `example_workflows/` (under **Templates**):
 
 | workflow | what it shows |
 |---|---|
@@ -370,7 +371,7 @@ switching between them relaunches the server.
 | Negative prompt | inert | live |
 | 241f @ 576x1024 | ~38 s | ~254 s |
 
-`load_tt_ltx_standalone.json` in `user/default/workflows/` has both branches plus
+`load_tt_ltx_standalone.json` in `example_workflows/` has both branches plus
 a muted `TT Kill Server`. The Pro branch ships muted (mode 4, the same convention
 the SDXL workflows use for `TT_UnloadModel`) so a plain Queue runs only the fast
 path — unmute Pro and mute distilled to switch, and expect a server relaunch when
@@ -390,7 +391,7 @@ min for Wan 2.2 (trace capture). Watch the server log at
 
 **`tt-smi` not found** — ensure `tt-smi` is on `PATH` (installed by
 `tt-installer`) or set `TT_SMI_BIN` to its console script. Used for the board
-reset option of TT Unload Model and for device detection in `launch_server.sh`.
+reset option of TT Kill Server and for device detection in `launch_server.sh`.
 
 **Port already in use** — set `TT_SERVER_PORT` (and make sure nothing else holds
 `:8000`). The ComfyUI web UI port (`--port`, default `8188`) is independent.
