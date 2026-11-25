@@ -3,3 +3,5 @@
 # tt-metal next to ComfyUI does not contain it.
 branch=stisi/comfyui_20261023_main
 commit=64bc494efdf57fa47fc3bb865d09719ddfb2cadd
+# Fallback if the branch is deleted.
+tag=comfyui-tenstorrent-pin-20261023

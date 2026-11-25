@@ -89,11 +89,24 @@ set `TT_METAL_HOME` to it.
 
 ## 3. Build tt-metal (pinned branch)
 
-The media server needs tt-metal changes that are **not on `main`** yet:
-per-component LoRA ([PR #47509](https://github.com/tenstorrent/tt-metal/pull/47509),
-still open), the LTX-2.3 QuietBox 2 and LoRA work, and a MiniMax-H3 fix. The
+The media server needs tt-metal changes that are **not on `main`** yet. The
 branch and commit that carry them on top of a recent `main` are pinned in
-[`TT_METAL_REF`](TT_METAL_REF).
+[`TT_METAL_REF`](TT_METAL_REF). Upstream status as of 2026-11-25:
+
+| Change | Needed for | Commit on pin branch | Upstream |
+|---|---|---|---|
+| Per-component LoRA scales + text-encoder LoRA | SDXL LoRA | (29 commits) | [#47509](https://github.com/tenstorrent/tt-metal/pull/47509), open, needs review |
+| Enable 4-chip QuietBox 2 (2x2 mesh) | LTX-2.3 | `206d7a0ffea` | no PR; applies cleanly to main |
+| Per-modality CFG rescale | LTX-2.3 Pro | `630a20a094e` | no PR; applies cleanly to main |
+| Bind several LoRA adapters at once | LTX LoRA stacking | `e3acab1df87` | no PR; applies cleanly to main |
+| Progress events, one-stage pipeline | LTX progress bar | `d58958aaac3` | no PR; conflicts with main |
+| Progress events, distilled pipeline | LTX progress bar | `e7c083efb18` | no PR; conflicts with main |
+| Reject unaligned buffers in pinned DMA path (hang on >32 MiB cached tensors) | LTX on 2x2 mesh | `466488a8f2a` | [#56585](https://github.com/tenstorrent/tt-metal/pull/56585), auto-closed as stale; conflicts with main |
+| Tile-pad the prompt when SP is 1 | MiniMax-H3 | `64bc494efdf` | no PR; applies cleanly to main |
+
+The Wan 2.2 changes ([#47715](https://github.com/tenstorrent/tt-metal/pull/47715),
+[#47265](https://github.com/tenstorrent/tt-metal/pull/47265)) are already merged.
+When every row above has landed, point `TT_METAL_REF` at a tt-metal release.
 
 One script does the whole section:
 
