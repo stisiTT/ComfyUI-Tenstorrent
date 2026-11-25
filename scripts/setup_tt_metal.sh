@@ -61,6 +61,20 @@ checkout_pin() {
     fi
 }
 
+# The pin is fetched by branch, then tag, then bare SHA, so it stays reachable
+# if the branch is deleted.
+fetch_pin() {
+    local ref
+    git -C "${METAL_HOME}" cat-file -e "${PIN_COMMIT}^{commit}" 2>/dev/null && return 0
+    for ref in ${PIN_BRANCH:+"refs/heads/${PIN_BRANCH}"} ${PIN_TAG:+"refs/tags/${PIN_TAG}"} "${PIN_COMMIT}"; do
+        git -C "${METAL_HOME}" fetch origin "${ref}" 2>/dev/null \
+            && git -C "${METAL_HOME}" cat-file -e "${PIN_COMMIT}^{commit}" 2>/dev/null \
+            && return 0
+    done
+    error "Could not fetch ${PIN_COMMIT:0:11} from ${METAL_URL}"
+    exit 1
+}
+
 confirm() {
     if [[ "${ASSUME_YES}" == "true" ]]; then return 0; fi
     local reply
@@ -80,6 +94,7 @@ done
 
 PIN_BRANCH="$(sed -n 's/^branch=//p' "${REF_FILE}")"
 PIN_COMMIT="$(sed -n 's/^commit=//p' "${REF_FILE}")"
+PIN_TAG="$(sed -n 's/^tag=//p' "${REF_FILE}")"
 [[ -n "${PIN_COMMIT}" ]] || { error "No commit= line in ${REF_FILE}"; exit 1; }
 
 status "tt-metal at ${METAL_HOME}, pinned to ${PIN_BRANCH} (${PIN_COMMIT:0:11})"
@@ -90,13 +105,13 @@ status "tt-metal at ${METAL_HOME}, pinned to ${PIN_BRANCH} (${PIN_COMMIT:0:11})"
 if [[ ! -e "${METAL_HOME}" ]]; then
     confirm "Clone tt-metal into ${METAL_HOME}? (a few GB)" || { info "Stopped before cloning."; exit 0; }
     git clone "${METAL_URL}" "${METAL_HOME}"
+    fetch_pin
     checkout_pin
 elif [[ ! -d "${METAL_HOME}/.git" && ! -f "${METAL_HOME}/.git" ]]; then
     error "${METAL_HOME} exists but is not a git checkout"
     exit 1
 else
-    git -C "${METAL_HOME}" cat-file -e "${PIN_COMMIT}^{commit}" 2>/dev/null \
-        || git -C "${METAL_HOME}" fetch origin "${PIN_BRANCH}"
+    fetch_pin
     if git -C "${METAL_HOME}" merge-base --is-ancestor "${PIN_COMMIT}" HEAD; then
         info "Existing checkout already contains the pinned commit; leaving it where it is."
     elif [[ -n "$(git -C "${METAL_HOME}" status --porcelain --untracked-files=no)" ]]; then
